@@ -30,18 +30,18 @@ fn gbool2result(val: i32) -> Result<(),()> {
 }
 
 extern "C" fn cb_gathered(_: *mut bindings::_NiceAgent,
-		_: u32,
+		_: u32, //stream
 		tx: Box<Sender<()>>)
 {
 	(*tx).send(()).ok().expect("NiceAgent cb_gathered(): Error while sending!");
 }
 
 extern "C" fn cb_receive(_: *mut bindings::_NiceAgent,
-	_: libc::c_uint, // stream
-	_: libc::c_uint, // component
-	len: libc::c_uint,
-	buf: *mut libc::c_char,
-	tx: *mut Sender<Vec<u8>>)
+		_: libc::c_uint, // stream
+		_: libc::c_uint, // component
+		len: libc::c_uint,
+		buf: *mut libc::c_char,
+		tx: *mut Sender<Vec<u8>>)
 {
 	debug!("cb_receive: len={}", len);
 	let res = unsafe {
@@ -54,10 +54,10 @@ extern "C" fn cb_receive(_: *mut bindings::_NiceAgent,
 }
 
 extern "C" fn cb_state_changed(_: *mut bindings::_NiceAgent,
-	_:     libc::c_uint, // stream
-	_:     libc::c_uint, // component
-	state: libc::c_uint,
-	txx:   *mut libc::c_void)
+		_:     libc::c_uint, // stream
+		_:     libc::c_uint, // component
+		state: libc::c_uint,
+		txx:   *mut libc::c_void)
 {
 	debug!("component state changed: {}", bindings::NiceComponentState::from_u32(state));
 	if state == bindings::NiceComponentState::NICE_COMPONENT_STATE_READY.to_u32() {
@@ -83,19 +83,25 @@ extern "C" {
 	pub fn g_object_unref(ptr: *mut bindings::_NiceAgent);
 
 	#[link(name="glib-2.0")]
-    pub fn g_signal_connect_data(instance: *mut bindings::_NiceAgent,
-    	detailed_signal: *const libc::c_char,
-    	c_handler: Option<extern fn()>,
-    	data: *mut libc::c_void,
-    	destroy_data: Option<extern fn(*mut libc::c_void, *mut GClosure)>,
-    	connect_flags: libc::c_uint) -> libc::c_ulong;
+	pub fn g_signal_connect_data(instance: *mut bindings::_NiceAgent,
+			detailed_signal: *const libc::c_char,
+			c_handler:       Option<extern fn()>,
+			data:            *mut libc::c_void,
+			destroy_data:    Option<extern fn(*mut libc::c_void, *mut GClosure)>,
+			connect_flags:   libc::c_uint)
+		-> libc::c_ulong;
 
-    pub fn g_object_set(instance: *mut bindings::_NiceAgent,
-                       property_name: *const libc::c_char,
-                       value: libc::c_int, null: libc::c_int);
-    pub fn g_object_get(instance: *mut bindings::_NiceAgent,
-                       property_name: *const libc::c_char,
-                       value: *mut libc::c_int, null: libc::c_int);
+	#[link(name="glib-2.0")]
+	pub fn g_object_set(instance:     *mut bindings::_NiceAgent,
+	                   property_name: *const libc::c_char,
+	                   value:         libc::c_int,
+	                   null:          libc::c_int);
+
+	#[link(name="glib-2.0")]
+	pub fn g_object_get(instance:     *mut bindings::_NiceAgent,
+	                   property_name: *const libc::c_char,
+	                   value:         *mut libc::c_int,
+	                   null:          libc::c_int);
 }
 
 impl NiceAgent {

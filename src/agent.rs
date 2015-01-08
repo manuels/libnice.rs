@@ -161,7 +161,7 @@ impl NiceAgent {
 		unsafe {
 			let ptr = mem::transmute(boxed_tx);
 
-			self.on_component_state_changed(mem::transmute(cb_state_changed), ptr);
+			self.on_signal("component_state_changed", mem::transmute(cb_state_changed), ptr);
 		};
 		Ok((stream, Future::from_receiver(rx)))
 	}
@@ -244,7 +244,7 @@ impl NiceAgent {
 			unsafe {
 				let ptr = mem::transmute(boxed_tx);
 
-				self.on_candidate_gathering_done(mem::transmute(cb_gathered), ptr);
+				self.on_signal("candidate_gathering_done", mem::transmute(cb_gathered), ptr);
 			}
 			Ok(Future::from_receiver(rx))
 		}
@@ -317,28 +317,15 @@ impl NiceAgent {
 		}
 	}
 
-	fn on_candidate_gathering_done(&self,
+	fn on_signal(&self, signal: &str,
 		cb: extern fn(stream_id: u32, data: *mut libc::c_void), data: *mut libc::c_void)
 	{
 		let null:*const libc::c_int = std::ptr::null();
-		let signal = std::ffi::CString::from_slice("candidate-gathering-done".as_bytes());
+		let signal = std::ffi::CString::from_slice(signal.as_bytes());
 
 		unsafe {
 			g_signal_connect_data(*self.ptr, signal.as_ptr(), mem::transmute(Some(cb)),
 				data, mem::transmute(null), 0);
 		}
-	}
-
-	fn on_component_state_changed(&self,
-		cb: extern fn(stream_id: u32, data: *mut libc::c_void), data: *mut libc::c_void)
-	{
-		let null:*const libc::c_int = std::ptr::null();
-		let signal = std::ffi::CString::from_slice("component-state-changed".as_bytes());
-
-		let res = unsafe {
-			g_signal_connect_data(*self.ptr, signal.as_ptr(), mem::transmute(Some(cb)),
-				data, mem::transmute(null), 0)
-		};
-		assert!(res > 0);
 	}
 }

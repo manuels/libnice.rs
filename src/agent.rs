@@ -1,7 +1,6 @@
 extern crate libc;
 
 use bindings_agent as bindings;
-use address;
 
 use std;
 use std::mem;
@@ -141,12 +140,6 @@ impl NiceAgent {
 			g_object_get(*self.ptr, prop.as_ptr(), &mut value, 0);
 		}
 		value != FALSE
-	}
-
-	pub fn add_local_address(&self, addr: &address::NiceAddress) -> Result<(),()> {
-		let func = bindings::nice_agent_add_local_address;
-		let res = unsafe { func(*self.ptr, addr.ptr as *mut bindings::_NiceAddress) };
-		gbool2result(res)
 	}
 
 	pub fn add_stream(&self, name: Option<&str>) -> Result<(u32, Future<()>),()> {

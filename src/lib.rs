@@ -5,12 +5,9 @@
 #![feature(plugin)]
 #[plugin] #[macro_use] extern crate log;
 
-mod bindings_address;
 mod bindings_agent;
 
-mod address;
 mod agent;
-mod candidate;
 mod glib2;
 
 

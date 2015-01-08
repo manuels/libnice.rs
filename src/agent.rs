@@ -169,7 +169,7 @@ impl NiceAgent {
 		};
 
 		let stream = unsafe {
-			bindings::nice_agent_add_stream(*self.ptr, n_components)
+			bindings::nice_agent_add_stream(*self.ptr, n_components) as u32
 		};
 		
 		match stream {
@@ -179,7 +179,7 @@ impl NiceAgent {
 					self.set_stream_name(stream, name.unwrap());
 				}
 
-				self.stream_ready.insert(stream as u32, Future::from_receiver(rx));
+				self.stream_ready.insert(stream, Future::from_receiver(rx));
 				Ok(stream)
 			}
 		}
@@ -233,8 +233,8 @@ impl NiceAgent {
 		}).detach();
 
 		/*
-		 * wait for the stream to be come ready and then
-		 * return the channel in the future
+		 * wait for the stream to be come READY and then
+		 * return the Sender in the Future
 		 */
 		let mut is_stream_ready = self.stream_ready.remove(&stream).unwrap();
 		let future = Future::spawn(move || {

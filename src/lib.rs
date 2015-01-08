@@ -40,10 +40,10 @@ mod tests {
 		let (mut right,mut rgathered, rstream, rctx) = start_agent(false);
 
 		lgathered.get();
-		right.parse_remote_sdp(left.generate_local_sdp().as_slice()).unwrap();
+		right.parse_remote_sdp(left.generate_local_sdp()).unwrap();
 
 		rgathered.get();
-		left.parse_remote_sdp(right.generate_local_sdp().as_slice()).unwrap();
+		left.parse_remote_sdp(right.generate_local_sdp()).unwrap();
 
 		let (mut lready,lrx) = left.stream_to_channel(lctx, lstream).unwrap();
 		let (mut rready,rrx) = right.stream_to_channel(rctx, rstream).unwrap();

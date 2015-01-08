@@ -353,7 +353,7 @@ impl NiceAgent {
 	}
 
 	/// will fail if no stream with the right name exists!
-	pub fn parse_remote_sdp(&self, sdp: &str) -> Result<uint,()> {
+	pub fn parse_remote_sdp(&self, sdp: String) -> Result<uint,()> {
 		let s = std::ffi::CString::from_slice(sdp.as_bytes());
 		let count = unsafe {
 			bindings::nice_agent_parse_remote_sdp(*self.ptr, s.as_ptr())

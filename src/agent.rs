@@ -107,7 +107,9 @@ extern "C" {
 }
 
 impl NiceAgent {
-	pub fn new(ctx: *mut bindings::GMainContext, controlling_mode: bool) -> NiceAgent {
+	pub fn new(ctx: *mut bindings::GMainContext, controlling_mode: bool)
+			-> NiceAgent
+	{
 		//let ctx = 0 as *mut bindings::GMainContext;
 		let ptr = unsafe {
 			bindings::nice_agent_new(ctx, bindings::NiceCompatibility::NICE_COMPATIBILITY_RFC5245.to_u32())
@@ -181,8 +183,11 @@ impl NiceAgent {
 		Ok(stream)
 	}
 
-	pub fn stream_to_channel(&mut self, ctx: *mut bindings::GMainContext, stream: u32) ->
-			Result<(Future<Sender<Vec<u8>>>, Receiver<Vec<u8>>), ()> {
+	pub fn stream_to_channel(&mut self,
+			ctx: *mut bindings::GMainContext,
+			stream: u32)
+		-> Result<(Future<Sender<Vec<u8>>>, Receiver<Vec<u8>>), ()>
+	{
 		//let ctx = 0 as *mut bindings::GMainContext;
 		let (my_tx, your_rx): (Sender<Vec<u8>>,Receiver<Vec<u8>>) = channel();
 		let (your_tx, my_rx): (Sender<Vec<u8>>,Receiver<Vec<u8>>) = channel();
@@ -243,8 +248,15 @@ impl NiceAgent {
 		}
 	}
 
-	pub fn set_relay_info(&self, stream: u32, component_id: u32, server_ip: &str,
-			port: u16, username: &str, password: &str, typ: u32) -> Result<(),()>
+	pub fn set_relay_info(&self,
+			stream: u32,
+			component_id: u32,
+			server_ip: &str,
+			port: u16,
+			username: &str,
+			password: &str,
+			typ: u32)
+		-> Result<(),()>
 	{
 		let func = bindings::nice_agent_set_relay_info;
 
@@ -278,7 +290,12 @@ impl NiceAgent {
 		}
 	}
 
-	pub fn send(&self, stream_id: u32, component_id: u32, buf: &[u8]) -> Result<uint,()> {
+	pub fn send(&self,
+			stream_id: u32,
+			component_id: u32,
+			buf: &[u8])
+		-> Result<uint,()>
+	{
 		let res = unsafe { bindings::nice_agent_send(*self.ptr, stream_id, component_id,
 			buf.len() as u32, buf.as_ptr() as *const i8) };
 

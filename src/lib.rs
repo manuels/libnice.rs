@@ -58,7 +58,6 @@ mod tests {
 			rtx.send(vec![19u8, 28-i]).unwrap();
 			assert_eq!(lrx.recv().unwrap(), vec![19u8, 28-i]);
 			assert_eq!(rrx.recv().unwrap(), vec![91u8, 82+i]);
-
 		}
 	}
 }

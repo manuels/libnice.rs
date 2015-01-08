@@ -51,8 +51,6 @@ mod tests {
 		let ltx = lready.get();
 		let rtx = rready.get();
 
-		// this MUST come after stream_to_channel() 'cause stream_to_channel() installs the receiver!
-
 		for i in range(0,20) {
 			ltx.send(vec![91u8, 82+i]).unwrap();
 			rtx.send(vec![19u8, 28-i]).unwrap();

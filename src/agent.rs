@@ -236,7 +236,8 @@ impl NiceAgent {
 		 * wait for the stream to be come READY and then
 		 * return the Sender in the Future
 		 */
-		let mut is_stream_ready = self.stream_ready.remove(&stream).unwrap();
+		let mut is_stream_ready = self.stream_ready.remove(&stream)
+			.expect("You requested a channel for a stream that does not exist (anymore?).");
 		let future = Future::spawn(move || {
 			is_stream_ready.get();
 			(your_tx)

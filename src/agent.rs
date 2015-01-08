@@ -160,17 +160,6 @@ impl NiceAgent {
 
 	pub fn add_stream(&mut self, name: Option<&str>) -> Result<u32,()> {
 		let n_components = 1;// u32
-		let stream = unsafe {
-			bindings::nice_agent_add_stream(*self.ptr, n_components)
-		};
-		if stream == 0 {
-			return Err(());
-		}
-
-		if name.is_some() {
-			self.set_stream_name(stream, name.unwrap());
-		}
-
 		let (tx, rx): (Sender<()>,Receiver<()>) = channel();
 		let boxed_tx = box tx;
 
@@ -178,9 +167,22 @@ impl NiceAgent {
 			let ptr = mem::transmute(boxed_tx);
 			self.on_signal("component_state_changed", mem::transmute(cb_state_changed), ptr);
 		};
-		self.stream_ready.insert(stream as u32, Future::from_receiver(rx));
 
-		Ok(stream)
+		let stream = unsafe {
+			bindings::nice_agent_add_stream(*self.ptr, n_components)
+		};
+		
+		match stream {
+			0 => Err(()),
+			_ => {
+				if name.is_some() {
+					self.set_stream_name(stream, name.unwrap());
+				}
+
+				self.stream_ready.insert(stream as u32, Future::from_receiver(rx));
+				Ok(stream)
+			}
+		}
 	}
 
 	pub fn stream_to_channel(&mut self,
@@ -273,19 +275,19 @@ impl NiceAgent {
 	}
 
 	pub fn gather_candidates(&self, stream: u32) -> Result<Future<()>,()> {
+		let (tx, rx) = channel();
+		let boxed_tx = box tx;
+
+		unsafe {
+			let ptr = mem::transmute(boxed_tx);
+
+			self.on_signal("candidate_gathering_done", mem::transmute(cb_gathered), ptr);
+		}
+
 		let res = unsafe {bindings::nice_agent_gather_candidates(*self.ptr, stream)};
-		
 		if res == FALSE {
 			Err(())
 		} else {
-			let (tx, rx) = channel();
-			let boxed_tx = box tx;
-
-			unsafe {
-				let ptr = mem::transmute(boxed_tx);
-
-				self.on_signal("candidate_gathering_done", mem::transmute(cb_gathered), ptr);
-			}
 			Ok(Future::from_receiver(rx))
 		}
 	}

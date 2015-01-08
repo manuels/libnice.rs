@@ -4,11 +4,13 @@ use bindings_agent as bindings;
 
 use std;
 use std::mem;
-use std::sync::Future;
+use std::sync::{Arc,Future};
 use std::sync::mpsc::{Sender,Receiver,channel};
 
 pub struct NiceAgent {
-	pub ptr: std::sync::Arc<*mut bindings::_NiceAgent>,
+	pub ptr: Arc<*mut bindings::_NiceAgent>,
+
+	stream_ready: std::collections::HashMap<u32, Future<()>>,
 }
 
 unsafe impl Send for *mut bindings::_NiceAgent {}
@@ -112,7 +114,10 @@ impl NiceAgent {
 		};
 
 		assert!(!ptr.is_null());
-		let agent = NiceAgent { ptr: std::sync::Arc::new(ptr) };
+		let agent = NiceAgent {
+			ptr: Arc::new(ptr),
+    		stream_ready: std::collections::HashMap::new()
+		};
 		agent.set_controlling_mode(controlling_mode);
 
 		agent
@@ -124,7 +129,10 @@ impl NiceAgent {
 			bindings::nice_agent_new_reliable(ctx, bindings::NiceCompatibility::NICE_COMPATIBILITY_RFC5245.to_u32())
 		};
 		assert!(!ptr.is_null());
-		let agent = NiceAgent { ptr: std::sync::Arc::new(ptr) };
+		let agent = NiceAgent {
+			ptr: Arc::new(ptr),
+    		stream_ready: std::collections::HashMap::new()
+		};
 		agent.set_controlling_mode(controlling_mode);
 
 		agent
@@ -148,7 +156,7 @@ impl NiceAgent {
 		value != FALSE
 	}
 
-	pub fn add_stream(&self, name: Option<&str>) -> Result<(u32, Future<()>),()> {
+	pub fn add_stream(&mut self, name: Option<&str>) -> Result<u32,()> {
 		let n_components = 1;// u32
 		let stream = unsafe {
 			bindings::nice_agent_add_stream(*self.ptr, n_components)
@@ -166,13 +174,15 @@ impl NiceAgent {
 
 		unsafe {
 			let ptr = mem::transmute(boxed_tx);
-
 			self.on_signal("component_state_changed", mem::transmute(cb_state_changed), ptr);
 		};
-		Ok((stream, Future::from_receiver(rx)))
+		self.stream_ready.insert(stream as u32, Future::from_receiver(rx));
+
+		Ok(stream)
 	}
 
-	pub fn stream_to_channel(&self, ctx: *mut bindings::GMainContext, stream: u32) -> Result<(Sender<Vec<u8>>,Receiver<Vec<u8>>), ()> {
+	pub fn stream_to_channel(&mut self, ctx: *mut bindings::GMainContext, stream: u32) ->
+			Result<(Future<Sender<Vec<u8>>>, Receiver<Vec<u8>>), ()> {
 		//let ctx = 0 as *mut bindings::GMainContext;
 		let (my_tx, your_rx): (Sender<Vec<u8>>,Receiver<Vec<u8>>) = channel();
 		let (your_tx, my_rx): (Sender<Vec<u8>>,Receiver<Vec<u8>>) = channel();
@@ -187,6 +197,9 @@ impl NiceAgent {
 			return Err(());
 		}
 
+		/*
+		 * spawn sender thread 
+		 */
 		let self_ptr = self.ptr.clone();
 		::std::thread::Thread::spawn(move || {
 			loop {
@@ -212,7 +225,16 @@ impl NiceAgent {
 			}
 		}).detach();
 
-		return Ok((your_tx, your_rx));
+		/*
+		 * wait for the stream to be come ready and then
+		 * return the channel in the future
+		 */
+		let mut is_stream_ready = self.stream_ready.remove(&stream).unwrap();
+		let future = Future::spawn(move || {
+			is_stream_ready.get();
+			(your_tx)
+		});
+		Ok((future, your_rx))
 	}
 
 	pub fn remove_stream(&self, stream: u32) {

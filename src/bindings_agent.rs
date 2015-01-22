@@ -934,8 +934,8 @@ enum  {
 	NICE_COMPONENT_STATE_LAST =	0x00000006 (6)
 }
 */
-#[derive(Copy, PartialEq, Show)]
 #[repr(u32)]
+#[derive(Copy, PartialEq, Show)]
 pub enum NiceComponentState {
 	NICE_COMPONENT_STATE_DISCONNECTED =	0 as u32,
 	NICE_COMPONENT_STATE_GATHERING =	1 as u32,
@@ -962,8 +962,8 @@ enum  {
 	NICE_COMPONENT_TYPE_RTCP =	0x00000002 (2)
 }
 */
-#[derive(Copy, PartialEq, Show)]
 #[repr(u32)]
+#[derive(Copy, PartialEq, Show)]
 pub enum NiceComponentType {
 	NICE_COMPONENT_TYPE_RTP =	1 as u32,
 	NICE_COMPONENT_TYPE_RTCP =	2 as u32,

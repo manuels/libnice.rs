@@ -1,14 +1,13 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
-#![feature(phase)]
-#![feature(plugin)]
-#[plugin] #[macro_use] extern crate log;
+#[macro_use] extern crate log;
 
 mod bindings_agent;
 
 mod agent;
 mod glib2;
+mod from_pointer;
 
 
 #[cfg(test)]
@@ -28,7 +27,7 @@ mod tests {
 			debug!("glib main loop starting...");
 			mainloop.run();
 			debug!("glib main loop exited.");
-		}).detach();
+		});
 		return (agent, gathered, stream, ctx);
 	}
 

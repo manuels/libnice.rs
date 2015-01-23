@@ -93,7 +93,7 @@ extern "C" fn cb_state_changed(_: *mut bindings::_NiceAgent,
 }
 
 #[repr(C)]
-struct GClosure;
+pub struct GClosure;
 
 extern "C" {
 	#[link(name="glib-2.0")]

@@ -3,11 +3,12 @@
 
 #[macro_use] extern crate log;
 
-mod bindings_agent;
+pub mod bindings_agent;
 
-mod agent;
-mod glib2;
+pub mod agent;
+pub mod glib2;
 mod from_pointer;
+
 
 
 #[cfg(test)]

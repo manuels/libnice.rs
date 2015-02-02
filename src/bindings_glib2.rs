@@ -1,5 +1,5 @@
-#![crate_type = "lib"]
-#![crate_name = "ssh"]
+#![allow(dead_code)]
+#![allow(unstable)]
 
 extern crate libc;
 use std::mem;

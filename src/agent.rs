@@ -3,11 +3,19 @@ extern crate libc;
 use bindings_agent as bindings;
 
 use from_pointer::FromUtf8Pointer;
+use syscalls::socketpair;
 
 use std;
 use std::mem;
+use std::thread::Thread;
 use std::sync::{Arc,Future};
 use std::sync::mpsc::{Sender,Receiver,channel};
+use std::os::unix::Fd;
+use libc::consts::os::bsd44::{AF_UNIX, SOCK_DGRAM};
+use libc::funcs::bsd43::{send,recv};
+use libc::types::common::c95::c_void;
+use libc::types::os::arch::c95::size_t;
+use libc::types::os::arch::posix88::ssize_t;
 
 macro_rules! warn_on(
 	($cond:expr, $msg:expr) => ({
@@ -229,7 +237,7 @@ impl NiceAgent {
 		 * spawn sender thread 
 		 */
 		let self_ptr = self.ptr.clone();
-		::std::thread::Thread::spawn(move || {
+		Thread::spawn(move || {
 			for buf in my_rx.iter() {
 				let buf_ptr = buf.as_slice().as_ptr() as *const i8;
 
@@ -253,6 +261,56 @@ impl NiceAgent {
 			your_tx
 		});
 		Ok((future, your_rx))
+	}
+
+	pub fn stream_to_socket(&mut self,
+			ctx: *mut bindings::GMainContext,
+			stream: u32)
+		-> Result<Future<Fd>, ()>
+	{
+		let (my_sock, your_sock) = try!(socketpair(AF_UNIX, SOCK_DGRAM, 0)
+			.map_err(|_| ()));
+
+		self.stream_to_channel(ctx, stream)
+			.and_then(|(mut future, rx)| {
+				Ok(Future::spawn(move || {
+					Thread::spawn(move || {
+						loop {
+							let buf = rx.recv().unwrap();
+
+							let res = unsafe {
+								send(my_sock, buf.as_ptr() as *const c_void,
+									buf.len() as size_t, 0)
+							};
+							if res != buf.len() as ssize_t {
+								panic!("send(): failed (res={})", res);
+							}
+						}
+					});
+
+					let tx = future.get();
+					Thread::spawn(move || {
+						loop {
+							let mut buf = Vec::with_capacity(4096);
+	
+							let res = unsafe {
+								recv(my_sock, buf.as_mut_ptr() as *mut c_void,
+									buf.capacity() as size_t, 0)
+							};
+							if res < 0 {
+								panic!("recv(): failed (res={})", res);
+							} else {
+								unsafe {
+									buf.set_len(res as usize);
+								}
+								tx.send(buf).unwrap();
+							}
+						}
+					});
+
+					your_sock
+				})
+			)})
 	}
 
 	pub fn remove_stream(&self, stream: u32) {

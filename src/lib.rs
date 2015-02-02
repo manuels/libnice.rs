@@ -1,3 +1,7 @@
+#![feature(os)]
+#![feature(libc)]
+#![feature(std_misc)]
+
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
@@ -51,11 +55,11 @@ mod tests {
 		rgathered.get();
 		left.parse_remote_sdp(right.generate_local_sdp()).unwrap();
 
-		let (mut lready,lrx) = left.stream_to_channel(lctx, lstream).unwrap();
-		let (mut rready,rrx) = right.stream_to_channel(rctx, rstream).unwrap();
+		let (mut lready,lrx) = left.stream_to_channel(lctx, lstream);
+		let (mut rready,rrx) = right.stream_to_channel(rctx, rstream);
 
-		let ltx = lready.get();
-		let rtx = rready.get();
+		let ltx = lready.get().unwrap();
+		let rtx = rready.get().unwrap();
 
 		for i in range(0,20) {
 			ltx.send(vec![91u8, 82+i]).unwrap();
@@ -63,6 +67,24 @@ mod tests {
 			assert_eq!(lrx.recv().unwrap(), vec![19u8, 28-i]);
 			assert_eq!(rrx.recv().unwrap(), vec![91u8, 82+i]);
 		}
+	}
+
+	#[test]
+	#[should_fail]
+	fn does_timeout() {
+		unsafe { ::agent::g_type_init() };
+
+		let (mut left,mut lgathered, lstream, lctx) = start_agent(true);
+		let (right,mut rgathered, _, _) = start_agent(false);
+
+		lgathered.get();
+		right.parse_remote_sdp(left.generate_local_sdp()).unwrap();
+
+		rgathered.get();
+		left.parse_remote_sdp(right.generate_local_sdp()).unwrap();
+
+		info!("this test might take a sec");
+		left.stream_to_socket(lctx, lstream).get().unwrap();
 	}
 
 	#[test]
@@ -78,11 +100,15 @@ mod tests {
 		rgathered.get();
 		left.parse_remote_sdp(right.generate_local_sdp()).unwrap();
 
-		let mut lfuture = left.stream_to_socket(lctx, lstream).unwrap();
-		let mut rfuture = right.stream_to_socket(rctx, rstream).unwrap();
+		debug!("bar1");
+		let mut lfuture = left.stream_to_socket(lctx, lstream);
+		debug!("bar2");
+		let mut rfuture = right.stream_to_socket(rctx, rstream);
+		debug!("bar3");
 
 		Thread::spawn(move || {
-			let lfd = lfuture.get();
+			let lfd = lfuture.get().unwrap();
+
 			let input = "foo";
 			let output = [0 as i8;3];
 			unsafe {
@@ -94,7 +120,7 @@ mod tests {
 			};
 		});
 
-		let rfd = rfuture.get();
+		let rfd = rfuture.get().unwrap();
 		let input = "bar";
 		let output = [0 as i8;3];
 		unsafe {
@@ -104,6 +130,5 @@ mod tests {
 			assert!(recv(rfd, output.as_ptr() as *mut c_void, output.len() as size_t, 0) == output.len() as ssize_t);
 			debug!("rfd: done");
 		};
-
 	}
 }

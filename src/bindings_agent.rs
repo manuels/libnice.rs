@@ -855,7 +855,7 @@ enum  {
 	NICE_CANDIDATE_TYPE_RELAYED =	0x00000003 (3)
 }
 */
-#[derive(Copy, PartialEq, Show)]
+#[derive(Copy, PartialEq, Debug)]
 #[repr(u32)]
 pub enum NiceCandidateType {
 	NICE_CANDIDATE_TYPE_HOST =	0 as u32,
@@ -879,7 +879,7 @@ enum  {
 	NICE_CANDIDATE_TRANSPORT_UDP =	0x00000000 (0)
 }
 */
-#[derive(Copy, PartialEq, Show)]
+#[derive(Copy, PartialEq, Debug)]
 #[repr(u32)]
 pub enum NiceCandidateTransport {
 	NICE_CANDIDATE_TRANSPORT_UDP =	0 as u32,
@@ -904,7 +904,7 @@ enum  {
 	NICE_RELAY_TYPE_TURN_TLS =	0x00000002 (2)
 }
 */
-#[derive(Copy, PartialEq, Show)]
+#[derive(Copy, PartialEq, Debug)]
 #[repr(u32)]
 pub enum NiceRelayType {
 	NICE_RELAY_TYPE_TURN_UDP =	0 as u32,
@@ -935,7 +935,7 @@ enum  {
 }
 */
 #[repr(u32)]
-#[derive(Copy, PartialEq, Show)]
+#[derive(Copy, PartialEq, Debug)]
 pub enum NiceComponentState {
 	NICE_COMPONENT_STATE_DISCONNECTED =	0 as u32,
 	NICE_COMPONENT_STATE_GATHERING =	1 as u32,
@@ -963,7 +963,7 @@ enum  {
 }
 */
 #[repr(u32)]
-#[derive(Copy, PartialEq, Show)]
+#[derive(Copy, PartialEq, Debug)]
 pub enum NiceComponentType {
 	NICE_COMPONENT_TYPE_RTP =	1 as u32,
 	NICE_COMPONENT_TYPE_RTCP =	2 as u32,
@@ -992,7 +992,7 @@ enum  {
 	NICE_COMPATIBILITY_LAST =	0x00000005 (5)
 }
 */
-#[derive(Copy, PartialEq, Show)]
+#[derive(Copy, PartialEq, Debug)]
 #[repr(u32)]
 pub enum NiceCompatibility {
 	NICE_COMPATIBILITY_RFC5245 =	0 as u32,
@@ -1021,7 +1021,7 @@ enum  {
 	NICE_PROXY_TYPE_LAST =	0x00000002 (2)
 }
 */
-#[derive(Copy, PartialEq, Show)]
+#[derive(Copy, PartialEq, Debug)]
 #[repr(u32)]
 pub enum NiceProxyType {
 	NICE_PROXY_TYPE_NONE =	0 as u32,

@@ -269,17 +269,23 @@ impl NiceAgent {
 		});
 
 		/*
-		 * wait for the stream to be come READY and then
+		 * wait for the stream to become READY and then
 		 * return the Sender in the Future
 		 */
-		let err_msg = "You requested a channel for a stream that does not exist (anymore?).";
-		let mut stream_ready = self.stream_ready.lock().unwrap();
-		let mut is_stream_ready = (*stream_ready).remove(&stream).expect(err_msg);
-
+		let mut stream_ready = self.stream_ready.clone();
 		let future = Future::spawn(move || {
 			let is_ready = bindings::NiceComponentState::NICE_COMPONENT_STATE_READY.to_u32();
 
+			let err_msg = "You requested a channel for a stream that does not exist (anymore?).";
+			let mut ready = stream_ready.lock().unwrap();
+			let mut is_stream_ready = (*ready).get_mut(&stream).expect(err_msg);
+			
 			if is_stream_ready.get() == is_ready {
+				/*
+				 * if stream is not ready, we might get a ready signal later,
+				 * so just remove if channel is ready
+				 */
+				//TODO: (*ready).remove(&stream);
 				Ok(your_tx)
 			} else {
 				Err(())

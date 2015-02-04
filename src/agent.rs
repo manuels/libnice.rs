@@ -110,8 +110,15 @@ extern "C" fn cb_state_changed(_: *mut bindings::_NiceAgent,
 		// using the mem::transmute() instead of using the correct type in
 		// the function declaration prevents drop'ing when state is not 'READY'.
 		// TODO: can we circumvent this?
-		let tx: Box<Sender<libc::c_uint>> = unsafe { mem::transmute(txx) };
-		(*tx).send(state).ok().expect("cb_state_changed(): send failed");
+		unsafe {
+			let tx: *mut Sender<libc::c_uint> = mem::transmute(txx);
+			(*tx).send(state).ok().expect("cb_state_changed(): send failed");
+		};
+
+		if state == is_ready {
+			// drop() it:
+			let tx: Box<Sender<libc::c_uint>> = unsafe { mem::transmute(txx) };
+		}
 	}
 }
 

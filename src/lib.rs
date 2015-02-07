@@ -19,54 +19,70 @@ mod syscalls;
 mod tests {
 	use std::thread::Thread;
 	use libc::funcs::bsd43::{send,recv};
+	use std::time::duration::Duration;
+	use std::old_io::timer::sleep;
 	use libc::types::common::c95::c_void;
 	use libc::types::os::arch::c95::size_t;
 	use libc::types::os::arch::posix88::ssize_t;
+	use std::sync::mpsc::{channel,Receiver};
+	use std::sync::{Arc,Barrier};
+	use libc;
 
-	fn start_agent(controlling_mode: bool) -> (::agent::NiceAgent,
-			::std::sync::Future<()>, u32,
-			*mut ::bindings_agent::GMainContext)
+	fn start_agent(controlling_mode: bool) ->
+			(
+				::agent::NiceAgent,
+				u32,
+				Receiver<libc::c_uint>,
+				*mut ::bindings_agent::GMainContext)
 	{
 		let mainloop = ::glib2::GMainLoop::new();
 		let ctx = mainloop.get_context() as *mut ::bindings_agent::GMainContext;
 		let mut agent = ::agent::NiceAgent::new(ctx, controlling_mode);
 
-		let stream = agent.add_stream(Some("mystream")).unwrap();
-		let gathered = agent.gather_candidates(stream).unwrap();
+		let (stream, state_rx) = agent.add_stream(Some("mystream")).unwrap();
 
 		::std::thread::Thread::spawn(move || {
 			debug!("glib main loop starting...");
 			mainloop.run();
 			debug!("glib main loop exited.");
 		});
-		return (agent, gathered, stream, ctx);
+
+		// must come after mainloop.run()
+		agent.gather_candidates(stream);
+
+		return (agent, stream, state_rx, ctx);
 	}
 
 	#[test]
 	fn stream_to_channel() {
 		unsafe { ::agent::g_type_init() };
 
-		let (mut left,mut lgathered, lstream, lctx) = start_agent(true);
-		let (mut right,mut rgathered, rstream, rctx) = start_agent(false);
+		let (ltx_cred, rrx_cred) = channel();
+		let (rtx_cred, lrx_cred) = channel();
 
-		lgathered.get();
-		right.parse_remote_sdp(left.generate_local_sdp()).unwrap();
+		let barrier = Arc::new(Barrier::new(3));
 
-		rgathered.get();
-		left.parse_remote_sdp(right.generate_local_sdp()).unwrap();
+		for (control, tx_cred, rx_cred) in vec![(true, ltx_cred, lrx_cred), (false, rtx_cred, rrx_cred)].into_iter() {
+			let bar = barrier.clone();
+			Thread::spawn(move || {
+				let (mut agent, stream, state_rx, ctx) = start_agent(control);
 
-		let (mut lready,lrx) = left.stream_to_channel(lctx, lstream);
-		let (mut rready,rrx) = right.stream_to_channel(rctx, rstream);
+				let cred = agent.generate_local_sdp();
+				debug!("cred={}", cred);
+				tx_cred.send(cred).unwrap();
 
-		let ltx = lready.get().unwrap();
-		let rtx = rready.get().unwrap();
+				let remote_cred = rx_cred.recv().unwrap();
 
-		for i in range(0,20) {
-			ltx.send(vec![91u8, 82+i]).unwrap();
-			rtx.send(vec![19u8, 28-i]).unwrap();
-			assert_eq!(lrx.recv().unwrap(), vec![19u8, 28-i]);
-			assert_eq!(rrx.recv().unwrap(), vec![91u8, 82+i]);
+				let (tx, rx) = agent.stream_to_channel(ctx, stream, remote_cred, &state_rx).unwrap();
+
+				for i in range(0,20) {
+					tx.send(vec![1u8, 82+i]).unwrap();
+					assert_eq!(rx.recv().unwrap(), vec![1u8, 82+i]);
+				}
+				bar.wait();
+			});
 		}
+		barrier.wait();
 	}
 
 	#[test]
@@ -74,40 +90,63 @@ mod tests {
 	fn does_timeout() {
 		unsafe { ::agent::g_type_init() };
 
-		let (mut left,mut lgathered, lstream, lctx) = start_agent(true);
-		let (right,mut rgathered, _, _) = start_agent(false);
+		debug!("1");
+		let (mut left, lstream, lstate_rx, lctx) = start_agent(true);
+		let (right, _, _, _) = start_agent(false);
 
-		lgathered.get();
-		right.parse_remote_sdp(left.generate_local_sdp()).unwrap();
-
-		rgathered.get();
-		left.parse_remote_sdp(right.generate_local_sdp()).unwrap();
+		let remote_cred = right.generate_local_sdp();
 
 		info!("this test might take a sec");
-		left.stream_to_socket(lctx, lstream).get().unwrap();
+		left.stream_to_socket(lctx, lstream, remote_cred, &lstate_rx).unwrap();
+	}
+
+	#[test]
+	fn retry_works() {
+		unsafe { ::agent::g_type_init() };
+
+		let (mut left, lstream, lstate_rx, lctx) = start_agent(true);
+		let (mut right, rstream, rstate_rx, rctx) = start_agent(false);
+
+		let mut left_ok = false;
+		let mut right_ok = false;
+		let mut i = 20;
+
+		while !(left_ok && right_ok) {
+			if !left_ok {
+				let rcred = right.generate_local_sdp();
+				let res = left.stream_to_channel(lctx, lstream, rcred, &lstate_rx);
+
+				left_ok = res.is_ok();
+			}
+
+			sleep(Duration::seconds(i));
+
+			if !right_ok {
+				let lcred = left.generate_local_sdp();
+				let res = right.stream_to_channel(rctx, rstream, lcred, &rstate_rx);
+
+				right_ok = res.is_ok();
+			}
+
+			i -= 5;
+		}
 	}
 
 	#[test]
 	fn stream_to_socket() {
 		unsafe { ::agent::g_type_init() };
 
-		let (mut left,mut lgathered, lstream, lctx) = start_agent(true);
-		let (mut right,mut rgathered, rstream, rctx) = start_agent(false);
-
-		lgathered.get();
-		right.parse_remote_sdp(left.generate_local_sdp()).unwrap();
-
-		rgathered.get();
-		left.parse_remote_sdp(right.generate_local_sdp()).unwrap();
-
 		debug!("bar1");
-		let mut lfuture = left.stream_to_socket(lctx, lstream);
-		debug!("bar2");
-		let mut rfuture = right.stream_to_socket(rctx, rstream);
-		debug!("bar3");
 
-		Thread::spawn(move || {
-			let lfd = lfuture.get().unwrap();
+		let (ltx,rrx) = channel();
+		let (rtx,lrx) = channel();
+
+		let thread = Thread::scoped(move || {
+			let (mut left, lstream, lstate_rx, lctx) = start_agent(true);
+			ltx.send(left.generate_local_sdp()).unwrap();
+
+			let rcred = lrx.recv().unwrap();
+			let lfd = left.stream_to_socket(lctx, lstream, rcred, &lstate_rx).unwrap();
 
 			let input = "foo";
 			let output = [0 as i8;3];
@@ -120,7 +159,12 @@ mod tests {
 			};
 		});
 
-		let rfd = rfuture.get().unwrap();
+		let (mut right, rstream, rstate_rx, rctx) = start_agent(false);
+		rtx.send(right.generate_local_sdp()).unwrap();
+
+		let lcred = rrx.recv().unwrap();
+		let rfd = right.stream_to_socket(rctx, rstream, lcred, &rstate_rx).unwrap();
+
 		let input = "bar";
 		let output = [0 as i8;3];
 		unsafe {
@@ -130,5 +174,7 @@ mod tests {
 			assert!(recv(rfd, output.as_ptr() as *mut c_void, output.len() as size_t, 0) == output.len() as ssize_t);
 			debug!("rfd: done");
 		};
+
+		drop(thread);
 	}
 }

@@ -8,7 +8,6 @@ use syscalls::socketpair;
 use std;
 use std::mem;
 use std::thread::Thread;
-use std::sync::{Arc,Future,Mutex};
 use std::sync::mpsc::{Sender,Receiver,channel};
 use std::os::unix::Fd;
 use libc::consts::os::bsd44::{AF_UNIX, SOCK_DGRAM};
@@ -38,7 +37,6 @@ macro_rules! as_result(
 pub struct NiceAgent {
 	pub ptr: *mut bindings::_NiceAgent,
 
-	stream_ready: Arc<Mutex<std::collections::HashMap<u32, Future<u32>>>>,
 }
 
 impl NiceAgent {
@@ -48,7 +46,6 @@ impl NiceAgent {
 		}
 		NiceAgent {
 			ptr: self.ptr,
-			stream_ready: self.stream_ready.clone(),
 		}
 	}
 }
@@ -58,9 +55,8 @@ unsafe impl Sync for *mut bindings::_NiceAgent {}
 
 impl Drop for NiceAgent {
 	fn drop(&mut self) {
-		debug!("NiceAgent::drop()");
-
 		unsafe {
+			debug!("NiceAgent::drop() unref({:?})", self.ptr);
 			g_object_unref(self.ptr);
 		}
 	}
@@ -69,10 +65,12 @@ impl Drop for NiceAgent {
 const FALSE: i32 = 0;
 const TRUE: i32 = 1;
 
-extern "C" fn cb_gathered(_: *mut bindings::_NiceAgent,
+extern "C" fn cb_gathered(agent: *mut bindings::_NiceAgent,
 		_: u32, //stream
 		tx: Box<Sender<()>>)
 {
+	debug!("candidates gathered for agent {:?}", agent);
+
 	(*tx).send(()).ok().expect("NiceAgent cb_gathered(): Error while sending!");
 }
 
@@ -96,30 +94,17 @@ extern "C" fn cb_receive(_: *mut bindings::_NiceAgent,
 	};
 }
 
-extern "C" fn cb_state_changed(_: *mut bindings::_NiceAgent,
+extern "C" fn cb_state_changed(agent: *mut bindings::_NiceAgent,
 		_:     libc::c_uint, // stream
 		_:     libc::c_uint, // component
 		state: libc::c_uint,
-		txx:   *mut libc::c_void)
+		tx:    *mut Sender<libc::c_uint>)
 {
-	debug!("component state changed: {:?}", bindings::NiceComponentState::from_u32(state));
+	debug!("component state changed for agent {:?}: {:?}", agent, bindings::NiceComponentState::from_u32(state));
 
-	let is_ready = bindings::NiceComponentState::NICE_COMPONENT_STATE_READY.to_u32();
-	let is_failed = bindings::NiceComponentState::NICE_COMPONENT_STATE_FAILED.to_u32();
-	if state == is_ready || state == is_failed {
-		// using the mem::transmute() instead of using the correct type in
-		// the function declaration prevents drop'ing when state is not 'READY'.
-		// TODO: can we circumvent this?
-		unsafe {
-			let tx: *mut Sender<libc::c_uint> = mem::transmute(txx);
-			(*tx).send(state).ok().expect("cb_state_changed(): send failed");
-		};
-
-		if state == is_ready {
-			// drop() it:
-			let tx: Box<Sender<libc::c_uint>> = unsafe { mem::transmute(txx) };
-		}
-	}
+	unsafe {
+		(*tx).send(state).unwrap();
+	};
 }
 
 #[repr(C)]
@@ -172,7 +157,6 @@ impl NiceAgent {
 		assert!(!ptr.is_null());
 		let agent = NiceAgent {
 			ptr: ptr,
-    		stream_ready: Arc::new(Mutex::new(std::collections::HashMap::new()))
 		};
 		agent.set_controlling_mode(controlling_mode);
 
@@ -189,7 +173,6 @@ impl NiceAgent {
 
 		let agent = NiceAgent {
 			ptr: ptr,
-    		stream_ready: Arc::new(Mutex::new(std::collections::HashMap::new()))
 		};
 		agent.set_controlling_mode(controlling_mode);
 
@@ -214,9 +197,11 @@ impl NiceAgent {
 		value != FALSE
 	}
 
-	pub fn add_stream(&mut self, name: Option<&str>) -> Result<u32,()> {
+	pub fn add_stream(&mut self, name: Option<&str>)
+			-> Result<(u32, Receiver<libc::c_uint>),()>
+	{
 		let n_components = 1;
-		let (tx, rx) = channel();
+		let (tx, state_rx) = channel();
 		let boxed_tx = Box::new(tx);
 
 		let stream = unsafe {
@@ -235,16 +220,19 @@ impl NiceAgent {
 			self.set_stream_name(stream, name.unwrap());
 		}
 
-		let mut stream_ready = self.stream_ready.lock().unwrap();
-		(*stream_ready).insert(stream, Future::from_receiver(rx));
-		Ok(stream)
+		Ok((stream, state_rx))
 	}
 
 	pub fn stream_to_channel(&mut self,
-			ctx: *mut bindings::GMainContext,
-			stream: u32)
-		-> (Future<Result<Sender<Vec<u8>>,()>>, Receiver<Vec<u8>>)
+			ctx:      *mut bindings::GMainContext,
+			stream:   u32,
+			remote_cred: String,
+			state_rx: &Receiver<libc::c_uint>)
+		-> Result<(Sender<Vec<u8>>, Receiver<Vec<u8>>), ()>
 	{
+		let is_ready = bindings::NiceComponentState::NICE_COMPONENT_STATE_READY.to_u32();
+		let is_failed = bindings::NiceComponentState::NICE_COMPONENT_STATE_FAILED.to_u32();
+
 		let (my_tx, your_rx) = channel();
 		let (your_tx, my_rx): (Sender<Vec<u8>>,_) = channel();
 		let my_boxed_tx = Box::new(my_tx);
@@ -252,12 +240,28 @@ impl NiceAgent {
 		let res = unsafe {
 			let func_ptr = mem::transmute(cb_receive);
 			let data_ptr = mem::transmute(my_boxed_tx);
+			/* attaching a recv() calback must come BEFORE setting
+			 * remote credentials! */
 			bindings::nice_agent_attach_recv(self.ptr, stream, 1, ctx,
 				func_ptr, data_ptr)
 		};
 		if res == FALSE {
-			return (Future::from_value(Err(())), your_rx);
+			return Err(());
 		}
+
+		if try!(self.parse_remote_sdp(remote_cred)) <= 0 {
+			return Err(());
+		}
+
+		let mut state = state_rx.recv().unwrap();
+		while state != is_ready {
+			if state == is_failed {
+				debug!("stream_to_channel() failed");
+				return Err(());
+			}
+			state = state_rx.recv().unwrap();
+		}
+
 
 		/*
 		 * spawn sender thread 
@@ -275,83 +279,60 @@ impl NiceAgent {
 			}
 		});
 
-		/*
-		 * wait for the stream to become READY and then
-		 * return the Sender in the Future
-		 */
-		let mut stream_ready = self.stream_ready.clone();
-		let future = Future::spawn(move || {
-			let is_ready = bindings::NiceComponentState::NICE_COMPONENT_STATE_READY.to_u32();
-
-			let err_msg = "You requested a channel for a stream that does not exist (anymore?).";
-			let mut ready = stream_ready.lock().unwrap();
-			let mut is_stream_ready = (*ready).get_mut(&stream).expect(err_msg);
-			
-			if is_stream_ready.get() == is_ready {
-				/*
-				 * if stream is not ready, we might get a ready signal later,
-				 * so just remove if channel is ready
-				 */
-				//TODO: (*ready).remove(&stream);
-				Ok(your_tx)
-			} else {
-				Err(())
-			}
-		});
-		(future, your_rx)
+		Ok((your_tx, your_rx))
 	}
 
 	pub fn stream_to_socket(&mut self,
 			ctx: *mut bindings::GMainContext,
-			stream: u32)
-		-> Future<Result<Fd,()>>
+			stream: u32,
+			remote_cred: String,
+			state_rx: &Receiver<libc::c_uint>)
+		-> Result<Fd,()>
 	{
 		let res = socketpair(AF_UNIX, SOCK_DGRAM, 0);
 		if res.is_err() {
-			return Future::from_value(Err(()));
+			return Err(());
 		}
 		let (my_sock, your_sock) = res.unwrap();
 
-		let (mut future, rx) = self.stream_to_channel(ctx, stream);
+		let (tx, rx) = try!(self.stream_to_channel(ctx, stream, remote_cred, state_rx));
 
-		Future::spawn(move || {
-			let tx = try!(future.get());
+		Thread::spawn(move || {
+			loop {
+				let buf = rx.recv().unwrap();
 
-			Thread::spawn(move || {
-				loop {
-					let buf = rx.recv().unwrap();
-
-					let res = unsafe {
-						send(my_sock, buf.as_ptr() as *const c_void,
-							buf.len() as size_t, 0)
-					};
-					if res != buf.len() as ssize_t {
-						panic!("send(): failed (res={})", res);
-					}
+				let res = unsafe {
+					send(my_sock, buf.as_ptr() as *const c_void,
+						buf.len() as size_t, 0)
+				};
+				if res != buf.len() as ssize_t {
+					panic!("send(): failed (res={})", res);
 				}
-			});
+			}
+		});
 
-			Thread::spawn(move || {
-				loop {
-					let mut buf = Vec::with_capacity(4096);
+		Thread::spawn(move || {
+			loop {
+				let mut buf = Vec::with_capacity(4096);
 
-					let res = unsafe {
-						recv(my_sock, buf.as_mut_ptr() as *mut c_void,
-							buf.capacity() as size_t, 0)
-					};
-					if res < 0 {
-						panic!("recv(): failed (res={})", res);
-					} else {
-						unsafe {
-							buf.set_len(res as usize);
-						}
-						tx.send(buf).unwrap();
+				let res = unsafe {
+					recv(my_sock, buf.as_mut_ptr() as *mut c_void,
+						buf.capacity() as size_t, 0)
+				};
+				if res < 0 {
+					panic!("recv(): failed (res={})", res);
+				} else {
+					unsafe {
+						buf.set_len(res as usize);
 					}
+					debug!("stream_to_socket(): sending...");
+					tx.send(buf).unwrap();
+					debug!("stream_to_socket(): sent");
 				}
-			});
+			}
+		});
 
-			Ok(your_sock)
-		})
+		Ok(your_sock)
 	}
 
 	pub fn remove_stream(&self, stream: u32) {
@@ -382,8 +363,10 @@ impl NiceAgent {
 		as_result!(res != FALSE, (), ())
 	}
 
-	pub fn gather_candidates(&self, stream: u32) -> Result<Future<()>,()> {
-		let (tx, rx) = channel();
+	pub fn gather_candidates(&self, stream: u32) {
+		/* ! A main loop must be running before caling this method !
+		 * This method is blocking */
+		let (tx, rx): (Sender<()>,_) = channel();
 		let boxed_tx = Box::new(tx);
 
 		unsafe {
@@ -395,7 +378,11 @@ impl NiceAgent {
 		let res = unsafe {
 			bindings::nice_agent_gather_candidates(self.ptr, stream)
 		};
-		as_result!(res != FALSE, Future::from_receiver(rx), ())
+		//assert!(res == TRUE);
+
+		debug!("gathering");
+		rx.recv().unwrap();
+		debug!("gathered");
 	}
 
 	pub fn send(&self, stream_id: u32, component_id: u32, buf: &[u8])

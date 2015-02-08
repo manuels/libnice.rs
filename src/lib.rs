@@ -14,6 +14,7 @@ pub mod agent;
 pub mod glib2;
 mod from_pointer;
 mod syscalls;
+mod utils;
 
 #[cfg(test)]
 mod tests {

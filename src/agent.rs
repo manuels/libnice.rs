@@ -4,6 +4,7 @@ use bindings_agent as bindings;
 
 use from_pointer::FromUtf8Pointer;
 use syscalls::socketpair;
+use utils::spawn_thread;
 
 use std;
 use std::mem;
@@ -267,7 +268,7 @@ impl NiceAgent {
 		 * spawn sender thread 
 		 */
 		let myself = self.clone();
-		Thread::spawn(move || {
+		spawn_thread("NiceAgent::stream_to_channel::sender", move || {
 			for buf in my_rx.iter() {
 				let buf_ptr = buf.as_slice().as_ptr() as *const i8;
 
@@ -297,7 +298,7 @@ impl NiceAgent {
 
 		let (tx, rx) = try!(self.stream_to_channel(ctx, stream, remote_cred, state_rx));
 
-		Thread::spawn(move || {
+		spawn_thread("NiceAgent::stream_to_socket::send", move || {
 			loop {
 				let buf = rx.recv().unwrap();
 
@@ -311,7 +312,7 @@ impl NiceAgent {
 			}
 		});
 
-		Thread::spawn(move || {
+		spawn_thread("NiceAgent::stream_to_socket::recv", move || {
 			loop {
 				let mut buf = Vec::with_capacity(4096);
 

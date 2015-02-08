@@ -103,9 +103,10 @@ extern "C" fn cb_state_changed(agent: *mut bindings::_NiceAgent,
 {
 	debug!("component state changed for agent {:?}: {:?}", agent, bindings::NiceComponentState::from_u32(state));
 
-	unsafe {
-		(*tx).send(state).unwrap();
-	};
+	let res = unsafe { (*tx).send(state) };
+	if res.is_err() {
+		warn!("cb_state_changed: send() failed!");
+	}
 }
 
 #[repr(C)]
@@ -257,7 +258,6 @@ impl NiceAgent {
 		let mut state = state_rx.recv().unwrap();
 		while state != is_ready {
 			if state == is_failed {
-				debug!("stream_to_channel() failed");
 				return Err(());
 			}
 			state = state_rx.recv().unwrap();

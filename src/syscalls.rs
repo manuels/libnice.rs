@@ -26,7 +26,7 @@ pub fn socketpair(domain: c_int, typ: c_int, protocol: c_int)
 		0 => Ok((sv[0], sv[1])),
 		_ => unsafe {
 			let ptr = strerror(errno() as c_int);
-			let msg = FromUtf8Pointer::from_utf8_pointer(&(ptr as *const i8));
+			let msg = FromUtf8Pointer::from_utf8_pointer(ptr as *const i8);
 			Err(msg.unwrap())
 		}
 	}

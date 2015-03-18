@@ -1,4 +1,5 @@
 extern crate libc;
+use std::ptr;
 
 pub mod bindings {
 	extern crate libc;
@@ -54,36 +55,36 @@ pub mod bindings {
 
 
 pub struct GMainLoop {
-	ptr: *mut bindings::GMainLoop
+	ptr: ptr::Unique<bindings::GMainLoop>
 }
 
 impl Drop for GMainLoop {
 	fn drop(&mut self) {
-		unsafe { bindings::g_main_loop_unref(self.ptr) }
+		unsafe { bindings::g_main_loop_unref(*self.ptr) }
 	}
 }
 
 impl GMainLoop {
 	pub fn new() -> GMainLoop {
-		let ctx = 0 as *mut bindings::GMainContext;
+		let ctx:*mut bindings::GMainContext = ptr::null_mut();
 		let is_running = 0;
-		let ptr = unsafe {
-			bindings::g_main_loop_new(ctx, is_running)
-		};
-		assert!(!ptr.is_null());
-		GMainLoop { ptr:ptr }
+		
+		unsafe {
+			let pointer = bindings::g_main_loop_new(ctx, is_running);
+			assert!(!pointer.is_null());
+	
+			GMainLoop { ptr: ptr::Unique::new(pointer) }
+		}
 	}
 
-	pub fn get_context(&self) -> *mut bindings::GMainContext {
-		let ptr = unsafe { bindings::g_main_loop_get_context(self.ptr) };
-		assert!(!ptr.is_null());
-		ptr
+	pub fn get_context(&self) -> ptr::Unique<bindings::GMainContext> {
+		let pointer = unsafe { bindings::g_main_loop_get_context(*self.ptr) };
+		assert!(!pointer.is_null());
+		unsafe { ptr::Unique::new(pointer) }
 	}
 
 
 	pub fn run(&self) {
-		unsafe { bindings::g_main_loop_run(self.ptr) };
+		unsafe { bindings::g_main_loop_run(*self.ptr) };
 	}
 }
-
-unsafe impl Send for *mut bindings::GMainLoop {}

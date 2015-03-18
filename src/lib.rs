@@ -1,5 +1,9 @@
+#![feature(rustc_private)]
+#![feature(core)]
 #![feature(os)]
+#![feature(unique)]
 #![feature(libc)]
+#![feature(collections)]
 #![feature(std_misc)]
 
 #![allow(dead_code)]
@@ -28,21 +32,22 @@ mod tests {
 	use std::sync::mpsc::{channel,Receiver};
 	use std::sync::{Arc,Barrier};
 	use libc;
+	use std::ptr;
 
 	fn start_agent(controlling_mode: bool) ->
 			(
 				::agent::NiceAgent,
 				u32,
 				Receiver<libc::c_uint>,
-				*mut ::bindings_agent::GMainContext)
+				ptr::Unique<::bindings_agent::GMainContext>)
 	{
 		let mainloop = ::glib2::GMainLoop::new();
-		let ctx = mainloop.get_context() as *mut ::bindings_agent::GMainContext;
-		let mut agent = ::agent::NiceAgent::new(ctx, controlling_mode);
+		let ctx = *mainloop.get_context() as *mut ::bindings_agent::GMainContext;
+		let mut agent = ::agent::NiceAgent::new(ctx, controlling_mode).unwrap();
 
 		let (stream, state_rx) = agent.add_stream(Some("mystream")).unwrap();
 
-		::std::thread::Thread::spawn(move || {
+		Thread::spawn(move || {
 			debug!("glib main loop starting...");
 			mainloop.run();
 			debug!("glib main loop exited.");
@@ -51,7 +56,9 @@ mod tests {
 		// must come after mainloop.run()
 		agent.gather_candidates(stream);
 
-		return (agent, stream, state_rx, ctx);
+		unsafe {
+			return (agent, stream, state_rx, ptr::Unique::new(ctx));
+		}
 	}
 
 	#[test]
@@ -74,7 +81,7 @@ mod tests {
 
 				let remote_cred = rx_cred.recv().unwrap();
 
-				let (tx, rx) = agent.stream_to_channel(ctx, stream, remote_cred, &state_rx).unwrap();
+				let (tx, rx) = agent.stream_to_channel(*ctx, stream, remote_cred, &state_rx).unwrap();
 
 				for i in range(0,20) {
 					tx.send(vec![1u8, 82+i]).unwrap();
@@ -87,18 +94,18 @@ mod tests {
 	}
 
 	#[test]
-	#[should_fail]
+	#[should_panic]
 	fn does_timeout() {
 		unsafe { ::agent::g_type_init() };
 
 		debug!("1");
 		let (mut left, lstream, lstate_rx, lctx) = start_agent(true);
-		let (right, _, _, _) = start_agent(false);
+		let (mut right, _, _, _) = start_agent(false);
 
 		let remote_cred = right.generate_local_sdp();
 
 		info!("this test might take a sec");
-		left.stream_to_socket(lctx, lstream, remote_cred, &lstate_rx).unwrap();
+		left.stream_to_socket(*lctx, lstream, remote_cred, &lstate_rx).unwrap();
 	}
 
 	#[test]
@@ -115,7 +122,7 @@ mod tests {
 		while !(left_ok && right_ok) {
 			if !left_ok {
 				let rcred = right.generate_local_sdp();
-				let res = left.stream_to_channel(lctx, lstream, rcred, &lstate_rx);
+				let res = left.stream_to_channel(*lctx, lstream, rcred, &lstate_rx);
 
 				left_ok = res.is_ok();
 			}
@@ -124,7 +131,7 @@ mod tests {
 
 			if !right_ok {
 				let lcred = left.generate_local_sdp();
-				let res = right.stream_to_channel(rctx, rstream, lcred, &rstate_rx);
+				let res = right.stream_to_channel(*rctx, rstream, lcred, &rstate_rx);
 
 				right_ok = res.is_ok();
 			}
@@ -147,7 +154,7 @@ mod tests {
 			ltx.send(left.generate_local_sdp()).unwrap();
 
 			let rcred = lrx.recv().unwrap();
-			let lfd = left.stream_to_socket(lctx, lstream, rcred, &lstate_rx).unwrap();
+			let lfd = left.stream_to_socket(*lctx, lstream, rcred, &lstate_rx).unwrap();
 
 			let input = "foo";
 			let output = [0 as i8;3];
@@ -164,7 +171,7 @@ mod tests {
 		rtx.send(right.generate_local_sdp()).unwrap();
 
 		let lcred = rrx.recv().unwrap();
-		let rfd = right.stream_to_socket(rctx, rstream, lcred, &rstate_rx).unwrap();
+		let rfd = right.stream_to_socket(*rctx, rstream, lcred, &rstate_rx).unwrap();
 
 		let input = "bar";
 		let output = [0 as i8;3];

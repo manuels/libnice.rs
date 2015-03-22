@@ -10,7 +10,7 @@ use std;
 use std::ptr;
 use std::mem;
 use std::sync::mpsc::{Sender,Receiver,channel};
-use std::os::unix::Fd;
+use std::os::unix::io::Fd;
 use libc::consts::os::bsd44::{AF_UNIX, SOCK_DGRAM};
 use libc::funcs::bsd43::{send,recv};
 use libc::types::common::c95::c_void;

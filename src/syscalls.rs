@@ -2,7 +2,7 @@ use from_pointer::FromUtf8Pointer;
 
 use libc::types::os::arch::c95::c_int;
 use libc::funcs::c95::string::strerror;
-use std::os::unix::Fd;
+use std::os::unix::io::Fd;
 use std::os::errno;
 
 mod syscall {

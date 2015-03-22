@@ -83,7 +83,7 @@ mod tests {
 
 				let (tx, rx) = agent.stream_to_channel(*ctx, stream, remote_cred, &state_rx).unwrap();
 
-				for i in range(0,20) {
+				for i in 0..20 {
 					tx.send(vec![1u8, 82+i]).unwrap();
 					assert_eq!(rx.recv().unwrap(), vec![1u8, 82+i]);
 				}

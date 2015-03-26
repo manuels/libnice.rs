@@ -64,7 +64,7 @@ impl Drop for NiceAgent {
 const FALSE: i32 = 0;
 const TRUE: i32 = 1;
 
-extern "C" fn cb_gathered(agent: ptr::Unique<bindings::_NiceAgent>,
+extern "C" fn cb_gathered(_: ptr::Unique<bindings::_NiceAgent>,
 		_: u32, //stream
 		tx: Box<Sender<()>>)
 {
@@ -92,7 +92,7 @@ extern "C" fn cb_receive(_: ptr::Unique<bindings::_NiceAgent>,
 	};
 }
 
-extern "C" fn cb_state_changed(agent: ptr::Unique<bindings::_NiceAgent>,
+extern "C" fn cb_state_changed(_: ptr::Unique<bindings::_NiceAgent>,
 		_:     libc::c_uint, // stream
 		_:     libc::c_uint, // component
 		state: libc::c_uint,
@@ -269,7 +269,8 @@ impl NiceAgent {
 		let myself = self.clone();
 		spawn_thread("NiceAgent::stream_to_channel::sender", move || {
 			for buf in my_rx.iter() {
-				let buf_ptr = buf.as_slice().as_ptr() as *const i8;
+				let reference:&[u8] = buf.as_ref();
+				let buf_ptr = reference.as_ptr() as *const i8;
 
 				let res = unsafe {
 					bindings::nice_agent_send(*myself.ptr, stream, 1,

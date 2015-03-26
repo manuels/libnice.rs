@@ -1,11 +1,12 @@
 #![feature(rustc_private)]
 #![feature(core)]
-#![feature(os)]
 #![feature(unique)]
 #![feature(libc)]
 #![feature(collections)]
 #![feature(std_misc)]
 #![feature(io_ext)]
+#![feature(thread_sleep)]
+#![feature(convert)]
 
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
@@ -23,10 +24,10 @@ mod utils;
 
 #[cfg(test)]
 mod tests {
-	use std::thread::Thread;
+	use std::thread;
 	use libc::funcs::bsd43::{send,recv};
 	use std::time::duration::Duration;
-	use std::old_io::timer::sleep;
+	use std::thread::sleep;
 	use libc::types::common::c95::c_void;
 	use libc::types::os::arch::c95::size_t;
 	use libc::types::os::arch::posix88::ssize_t;
@@ -48,7 +49,7 @@ mod tests {
 
 		let (stream, state_rx) = agent.add_stream(Some("mystream")).unwrap();
 
-		Thread::spawn(move || {
+		thread::spawn(move || {
 			debug!("glib main loop starting...");
 			mainloop.run();
 			debug!("glib main loop exited.");
@@ -73,7 +74,7 @@ mod tests {
 
 		for (control, tx_cred, rx_cred) in vec![(true, ltx_cred, lrx_cred), (false, rtx_cred, rrx_cred)].into_iter() {
 			let bar = barrier.clone();
-			Thread::spawn(move || {
+			thread::spawn(move || {
 				let (mut agent, stream, state_rx, ctx) = start_agent(control);
 
 				let cred = agent.generate_local_sdp();
@@ -150,7 +151,7 @@ mod tests {
 		let (ltx,rrx) = channel();
 		let (rtx,lrx) = channel();
 
-		let thread = Thread::scoped(move || {
+		let thread = thread::scoped(move || {
 			let (mut left, lstream, lstate_rx, lctx) = start_agent(true);
 			ltx.send(left.generate_local_sdp()).unwrap();
 

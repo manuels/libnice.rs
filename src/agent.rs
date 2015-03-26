@@ -80,7 +80,6 @@ extern "C" fn cb_receive(_: ptr::Unique<bindings::_NiceAgent>,
 		buf: *mut libc::c_char,
 		tx: *mut Sender<Vec<u8>>)
 {
-	//debug!("cb_receive: len={}", len);
 	let res = unsafe {
 		let vec = Vec::from_raw_buf(buf as *mut u8, len as usize);
 		(*tx).send(vec)

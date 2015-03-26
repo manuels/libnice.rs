@@ -5,6 +5,7 @@
 #![feature(libc)]
 #![feature(collections)]
 #![feature(std_misc)]
+#![feature(io_ext)]
 
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]

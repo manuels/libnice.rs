@@ -3,19 +3,13 @@ extern crate libc;
 use bindings_agent as bindings;
 
 use from_pointer::FromUtf8Pointer;
-use syscalls::socketpair;
 use utils::spawn_thread;
 
 use std;
 use std::ptr;
 use std::mem;
 use std::sync::mpsc::{Sender,Receiver,channel};
-use std::os::unix::io::Fd;
-use libc::consts::os::bsd44::{AF_UNIX, SOCK_DGRAM};
-use libc::funcs::bsd43::{send,recv};
 use libc::types::common::c95::c_void;
-use libc::types::os::arch::c95::size_t;
-use libc::types::os::arch::posix88::ssize_t;
 
 macro_rules! warn_on(
 	($cond:expr, $msg:expr) => ({
@@ -281,59 +275,6 @@ impl NiceAgent {
 		});
 
 		Ok((your_tx, your_rx))
-	}
-
-	pub fn stream_to_socket(&mut self,
-			ctx: *mut bindings::GMainContext,
-			stream: u32,
-			remote_cred: String,
-			state_rx: &Receiver<libc::c_uint>)
-		-> Result<Fd,()>
-	{
-		let res = socketpair(AF_UNIX, SOCK_DGRAM, 0);
-		if res.is_err() {
-			return Err(());
-		}
-		let (my_sock, your_sock) = res.unwrap();
-
-		let (tx, rx) = try!(self.stream_to_channel(ctx, stream, remote_cred, state_rx));
-
-		spawn_thread("NiceAgent::stream_to_socket::send", move || {
-			loop {
-				let buf = rx.recv().unwrap();
-
-				let res = unsafe {
-					send(my_sock, buf.as_ptr() as *const c_void,
-						buf.len() as size_t, 0)
-				};
-				if res != buf.len() as ssize_t {
-					panic!("send(): failed (res={})", res);
-				}
-			}
-		});
-
-		spawn_thread("NiceAgent::stream_to_socket::recv", move || {
-			loop {
-				let mut buf = Vec::with_capacity(4096);
-
-				let res = unsafe {
-					recv(my_sock, buf.as_mut_ptr() as *mut c_void,
-						buf.capacity() as size_t, 0)
-				};
-				if res < 0 {
-					panic!("recv(): failed (res={})", res);
-				} else {
-					unsafe {
-						buf.set_len(res as usize);
-					}
-					//debug!("stream_to_socket(): sending...");
-					tx.send(buf).unwrap();
-					//debug!("stream_to_socket(): sent");
-				}
-			}
-		});
-
-		Ok(your_sock)
 	}
 
 	pub fn remove_stream(&mut self, stream: u32) {

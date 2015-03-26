@@ -4,7 +4,6 @@
 #![feature(libc)]
 #![feature(collections)]
 #![feature(std_misc)]
-#![feature(io_ext)]
 #![feature(thread_sleep)]
 #![feature(convert)]
 
@@ -19,18 +18,13 @@ pub mod bindings_agent;
 pub mod agent;
 pub mod glib2;
 mod from_pointer;
-mod syscalls;
 mod utils;
 
 #[cfg(test)]
 mod tests {
 	use std::thread;
-	use libc::funcs::bsd43::{send,recv};
 	use std::time::duration::Duration;
 	use std::thread::sleep;
-	use libc::types::common::c95::c_void;
-	use libc::types::os::arch::c95::size_t;
-	use libc::types::os::arch::posix88::ssize_t;
 	use std::sync::mpsc::{channel,Receiver};
 	use std::sync::{Arc,Barrier};
 	use libc;
@@ -107,7 +101,7 @@ mod tests {
 		let remote_cred = right.generate_local_sdp();
 
 		info!("this test might take a sec");
-		left.stream_to_socket(*lctx, lstream, remote_cred, &lstate_rx).unwrap();
+		left.stream_to_channel(*lctx, lstream, remote_cred, &lstate_rx).unwrap();
 	}
 
 	#[test]
@@ -140,51 +134,5 @@ mod tests {
 
 			i -= 5;
 		}
-	}
-
-	#[test]
-	fn stream_to_socket() {
-		unsafe { ::agent::g_type_init() };
-
-		debug!("bar1");
-
-		let (ltx,rrx) = channel();
-		let (rtx,lrx) = channel();
-
-		let thread = thread::scoped(move || {
-			let (mut left, lstream, lstate_rx, lctx) = start_agent(true);
-			ltx.send(left.generate_local_sdp()).unwrap();
-
-			let rcred = lrx.recv().unwrap();
-			let lfd = left.stream_to_socket(*lctx, lstream, rcred, &lstate_rx).unwrap();
-
-			let input = "foo";
-			let output = [0 as i8;3];
-			unsafe {
-				debug!("lfd: send()");
-				assert!(send(lfd, input.as_ptr() as *const c_void, input.len() as size_t, 0) == input.len() as ssize_t);
-				debug!("lfd: recv()");
-				assert!(recv(lfd, output.as_ptr() as *mut c_void, output.len() as size_t, 0) == output.len() as ssize_t);
-				debug!("lfd: done");
-			};
-		});
-
-		let (mut right, rstream, rstate_rx, rctx) = start_agent(false);
-		rtx.send(right.generate_local_sdp()).unwrap();
-
-		let lcred = rrx.recv().unwrap();
-		let rfd = right.stream_to_socket(*rctx, rstream, lcred, &rstate_rx).unwrap();
-
-		let input = "bar";
-		let output = [0 as i8;3];
-		unsafe {
-			debug!("rfd: send()");
-			assert!(send(rfd, input.as_ptr() as *const c_void, input.len() as size_t, 0) == input.len() as ssize_t);
-			debug!("rfd: recv()");
-			assert!(recv(rfd, output.as_ptr() as *mut c_void, output.len() as size_t, 0) == output.len() as ssize_t);
-			debug!("rfd: done");
-		};
-
-		drop(thread);
 	}
 }

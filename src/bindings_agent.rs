@@ -855,7 +855,7 @@ enum  {
 	NICE_CANDIDATE_TYPE_RELAYED =	0x00000003 (3)
 }
 */
-#[derive(Copy, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum NiceCandidateType {
 	NICE_CANDIDATE_TYPE_HOST =	0 as u32,
@@ -866,7 +866,7 @@ pub enum NiceCandidateType {
 
 impl NiceCandidateType {
 	pub fn to_u32(&self) -> libc::c_uint {
-		*self as libc::c_uint
+		self.clone() as libc::c_uint
 	}
 
 	pub fn from_u32(v: libc::c_uint) -> NiceCandidateType {
@@ -879,7 +879,7 @@ enum  {
 	NICE_CANDIDATE_TRANSPORT_UDP =	0x00000000 (0)
 }
 */
-#[derive(Copy, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum NiceCandidateTransport {
 	NICE_CANDIDATE_TRANSPORT_UDP =	0 as u32,
@@ -888,7 +888,7 @@ pub enum NiceCandidateTransport {
 
 impl NiceCandidateTransport {
 	pub fn to_u32(&self) -> libc::c_uint {
-		*self as libc::c_uint
+		self.clone() as libc::c_uint
 	}
 
 	pub fn from_u32(v: libc::c_uint) -> NiceCandidateTransport {
@@ -904,7 +904,7 @@ enum  {
 	NICE_RELAY_TYPE_TURN_TLS =	0x00000002 (2)
 }
 */
-#[derive(Copy, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum NiceRelayType {
 	NICE_RELAY_TYPE_TURN_UDP =	0 as u32,
@@ -914,7 +914,7 @@ pub enum NiceRelayType {
 
 impl NiceRelayType {
 	pub fn to_u32(&self) -> libc::c_uint {
-		*self as libc::c_uint
+		self.clone() as libc::c_uint
 	}
 
 	pub fn from_u32(v: libc::c_uint) -> NiceRelayType {
@@ -935,7 +935,7 @@ enum  {
 }
 */
 #[repr(u32)]
-#[derive(Copy, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum NiceComponentState {
 	NICE_COMPONENT_STATE_DISCONNECTED =	0 as u32,
 	NICE_COMPONENT_STATE_GATHERING =	1 as u32,
@@ -947,7 +947,7 @@ pub enum NiceComponentState {
 
 impl NiceComponentState {
 	pub fn to_u32(&self) -> libc::c_uint {
-		*self as libc::c_uint
+		self.clone() as libc::c_uint
 	}
 
 	pub fn from_u32(v: libc::c_uint) -> NiceComponentState {
@@ -963,7 +963,7 @@ enum  {
 }
 */
 #[repr(u32)]
-#[derive(Copy, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum NiceComponentType {
 	NICE_COMPONENT_TYPE_RTP =	1 as u32,
 	NICE_COMPONENT_TYPE_RTCP =	2 as u32,
@@ -971,7 +971,7 @@ pub enum NiceComponentType {
 
 impl NiceComponentType {
 	pub fn to_u32(&self) -> libc::c_uint {
-		*self as libc::c_uint
+		self.clone() as libc::c_uint
 	}
 
 	pub fn from_u32(v: libc::c_uint) -> NiceComponentType {
@@ -992,7 +992,7 @@ enum  {
 	NICE_COMPATIBILITY_LAST =	0x00000005 (5)
 }
 */
-#[derive(Copy, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum NiceCompatibility {
 	NICE_COMPATIBILITY_RFC5245 =	0 as u32,
@@ -1005,7 +1005,7 @@ pub enum NiceCompatibility {
 
 impl NiceCompatibility {
 	pub fn to_u32(&self) -> libc::c_uint {
-		*self as libc::c_uint
+		self.clone() as libc::c_uint
 	}
 
 	pub fn from_u32(v: libc::c_uint) -> NiceCompatibility {
@@ -1021,7 +1021,7 @@ enum  {
 	NICE_PROXY_TYPE_LAST =	0x00000002 (2)
 }
 */
-#[derive(Copy, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum NiceProxyType {
 	NICE_PROXY_TYPE_NONE =	0 as u32,
@@ -1031,7 +1031,7 @@ pub enum NiceProxyType {
 
 impl NiceProxyType {
 	pub fn to_u32(&self) -> libc::c_uint {
-		*self as libc::c_uint
+		self.clone() as libc::c_uint
 	}
 
 	pub fn from_u32(v: libc::c_uint) -> NiceProxyType {

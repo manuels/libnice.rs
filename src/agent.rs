@@ -219,17 +219,17 @@ impl NiceAgent {
 	}
 
 	pub fn stream_to_channel(&mut self,
-			ctx:      *mut bindings::GMainContext,
-			stream:   u32,
+			ctx:         *mut bindings::GMainContext,
+			stream:      u32,
 			remote_cred: String,
-			state_rx: &Receiver<libc::c_uint>)
-		-> Result<(Sender<Vec<u8>>, Receiver<Vec<u8>>), ()>
+			state_rx:    &Receiver<libc::c_uint>,
+			my_tx:       Sender<Vec<u8>>,
+			my_rx:       Receiver<Vec<u8>>)
+		-> Result<(), ()>
 	{
 		let is_ready = bindings::NiceComponentState::NICE_COMPONENT_STATE_READY.to_u32();
 		let is_failed = bindings::NiceComponentState::NICE_COMPONENT_STATE_FAILED.to_u32();
 
-		let (my_tx, your_rx) = channel();
-		let (your_tx, my_rx): (Sender<Vec<u8>>,_) = channel();
 		let my_boxed_tx = Box::new(my_tx);
 
 		let res = unsafe {
@@ -274,7 +274,7 @@ impl NiceAgent {
 			}
 		});
 
-		Ok((your_tx, your_rx))
+		Ok(())
 	}
 
 	pub fn remove_stream(&mut self, stream: u32) {

@@ -3,9 +3,6 @@
 #![feature(unique)]
 #![feature(libc)]
 #![feature(collections)]
-#![feature(std_misc)]
-#![feature(thread_sleep)]
-#![feature(convert)]
 
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
@@ -77,7 +74,10 @@ mod tests {
 
 				let remote_cred = rx_cred.recv().unwrap();
 
-				let (tx, rx) = agent.stream_to_channel(*ctx, stream, remote_cred, &state_rx).unwrap();
+				let (tx, rrx) = channel();
+				let (ttx, rx) = channel();
+				agent.stream_to_channel(*ctx, stream, remote_cred, &state_rx,
+					ttx, rrx).unwrap();
 
 				for i in 0..20 {
 					tx.send(vec![1u8, 82+i]).unwrap();
@@ -94,14 +94,17 @@ mod tests {
 	fn does_timeout() {
 		unsafe { ::agent::g_type_init() };
 
-		debug!("1");
 		let (mut left, lstream, lstate_rx, lctx) = start_agent(true);
 		let (mut right, _, _, _) = start_agent(false);
 
 		let remote_cred = right.generate_local_sdp();
 
+		let (tx, rrx) = channel();
+		let (ttx, rx) = channel();
+
 		info!("this test might take a sec");
-		left.stream_to_channel(*lctx, lstream, remote_cred, &lstate_rx).unwrap();
+		left.stream_to_channel(*lctx, lstream, remote_cred, &lstate_rx,
+			ttx, rrx).unwrap();
 	}
 
 	#[test]
@@ -118,7 +121,11 @@ mod tests {
 		while !(left_ok && right_ok) {
 			if !left_ok {
 				let rcred = right.generate_local_sdp();
-				let res = left.stream_to_channel(*lctx, lstream, rcred, &lstate_rx);
+
+				let (tx, rrx) = channel();
+				let (ttx, rx) = channel();
+				let res = left.stream_to_channel(*lctx, lstream, rcred, &lstate_rx,
+					ttx, rrx);
 
 				left_ok = res.is_ok();
 			}
@@ -127,7 +134,11 @@ mod tests {
 
 			if !right_ok {
 				let lcred = left.generate_local_sdp();
-				let res = right.stream_to_channel(*rctx, rstream, lcred, &rstate_rx);
+
+				let (tx, rrx) = channel();
+				let (ttx, rx) = channel();
+				let res = right.stream_to_channel(*rctx, rstream, lcred, &rstate_rx,
+					ttx, rrx);
 
 				right_ok = res.is_ok();
 			}

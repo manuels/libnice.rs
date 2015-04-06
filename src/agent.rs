@@ -6,10 +6,11 @@ use from_pointer::FromUtf8Pointer;
 use utils::spawn_thread;
 
 use std;
-use std::ptr;
+use std::slice;
 use std::mem;
 use std::sync::mpsc::{Sender,Receiver,channel};
 use libc::types::common::c95::c_void;
+use libc::types::os::arch::c95::c_ulong;
 
 macro_rules! warn_on(
 	($cond:expr, $msg:expr) => ({
@@ -30,17 +31,17 @@ macro_rules! as_result(
 );
 
 pub struct NiceAgent {
-	pub ptr: ptr::Unique<bindings::_NiceAgent>,
+	pub ptr: *mut bindings::_NiceAgent,
 
 }
 
 impl NiceAgent {
 	pub fn clone(&mut self) -> NiceAgent {
 		unsafe {
-			g_object_ref(*self.ptr,);
+			g_object_ref(self.ptr,);
 	
 			NiceAgent {
-				ptr: ptr::Unique::new(*self.ptr,),
+				ptr: self.ptr,
 			}
 		}
 	}
@@ -50,7 +51,7 @@ impl Drop for NiceAgent {
 	fn drop(&mut self) {
 		unsafe {
 			//debug!("NiceAgent::drop() unref({:?})", self.ptr.get());
-			g_object_unref(*self.ptr,);
+			g_object_unref(self.ptr,);
 		}
 	}
 }
@@ -58,7 +59,7 @@ impl Drop for NiceAgent {
 const FALSE: i32 = 0;
 const TRUE: i32 = 1;
 
-extern "C" fn cb_gathered(_: ptr::Unique<bindings::_NiceAgent>,
+extern "C" fn cb_gathered(_: *mut bindings::_NiceAgent,
 		_: u32, //stream
 		tx: Box<Sender<()>>)
 {
@@ -67,7 +68,7 @@ extern "C" fn cb_gathered(_: ptr::Unique<bindings::_NiceAgent>,
 	(*tx).send(()).ok().expect("NiceAgent cb_gathered(): Error while sending!");
 }
 
-extern "C" fn cb_receive(_: ptr::Unique<bindings::_NiceAgent>,
+extern "C" fn cb_receive(_: *mut bindings::_NiceAgent,
 		_: libc::c_uint, // stream
 		_: libc::c_uint, // component
 		len: libc::c_uint,
@@ -75,7 +76,7 @@ extern "C" fn cb_receive(_: ptr::Unique<bindings::_NiceAgent>,
 		tx: *mut Sender<Vec<u8>>)
 {
 	let res = unsafe {
-		let vec = Vec::from_raw_buf(buf as *mut u8, len as usize);
+		let vec = slice::from_raw_parts(buf as *mut u8, len as usize).to_vec();
 		(*tx).send(vec)
 	};
 
@@ -86,7 +87,7 @@ extern "C" fn cb_receive(_: ptr::Unique<bindings::_NiceAgent>,
 	};
 }
 
-extern "C" fn cb_state_changed(_: ptr::Unique<bindings::_NiceAgent>,
+extern "C" fn cb_state_changed(_: *mut bindings::_NiceAgent,
 		_:     libc::c_uint, // stream
 		_:     libc::c_uint, // component
 		state: libc::c_uint,
@@ -149,7 +150,7 @@ impl NiceAgent {
 
 		assert!(!ptr.is_null());
 		let mut agent = NiceAgent {
-			ptr: unsafe {ptr::Unique::new(ptr)},
+			ptr: ptr,
 		};
 		try!(agent.set_controlling_mode(controlling_mode));
 
@@ -165,7 +166,7 @@ impl NiceAgent {
 		assert!(!ptr.is_null());
 
 		let mut agent = NiceAgent {
-			ptr: unsafe {ptr::Unique::new(ptr)},
+			ptr: ptr,
 		};
 		try!(agent.set_controlling_mode(controlling_mode));
 
@@ -177,7 +178,7 @@ impl NiceAgent {
 		let prop = try!(std::ffi::CString::new("controlling-mode").map_err(|_| ()));
 
 		unsafe {
-			g_object_set(*self.ptr, prop.as_ptr(), value, 0);
+			g_object_set(self.ptr, prop.as_ptr(), value, 0);
 		};
 
 		Ok(())
@@ -187,7 +188,7 @@ impl NiceAgent {
 		let prop = try!(std::ffi::CString::new("controlling-mode").map_err(|_| ()));
 		let mut value = -1 as libc::c_int;
 		unsafe {
-			g_object_get(*self.ptr, prop.as_ptr(), &mut value, 0);
+			g_object_get(self.ptr, prop.as_ptr(), &mut value, 0);
 		}
 		Ok(value != FALSE)
 	}
@@ -204,7 +205,7 @@ impl NiceAgent {
 			let data_ptr = mem::transmute(boxed_tx);
 			self.on_signal("component_state_changed", func_ptr, data_ptr);
 
-			bindings::nice_agent_add_stream(*self.ptr, n_components) as u32
+			bindings::nice_agent_add_stream(self.ptr, n_components) as u32
 		};
 
 		if stream == 0 {
@@ -237,7 +238,7 @@ impl NiceAgent {
 			let data_ptr = mem::transmute(my_boxed_tx);
 			/* attaching a recv() calback must come BEFORE setting
 			 * remote credentials! */
-			bindings::nice_agent_attach_recv(*self.ptr, stream, 1, ctx,
+			bindings::nice_agent_attach_recv(self.ptr, stream, 1, ctx,
 				func_ptr, data_ptr)
 		};
 		if res == FALSE {
@@ -260,15 +261,15 @@ impl NiceAgent {
 		/*
 		 * spawn sender thread 
 		 */
-		let myself = self.clone();
+		let self_ptr = self.ptr as c_ulong;
 		spawn_thread("NiceAgent::stream_to_channel::sender", move || {
 			for buf in my_rx.iter() {
 				let reference:&[u8] = buf.as_ref();
 				let buf_ptr = reference.as_ptr() as *const i8;
 
 				let res = unsafe {
-					bindings::nice_agent_send(*myself.ptr, stream, 1,
-						buf.len() as u32, buf_ptr)
+					bindings::nice_agent_send(self_ptr as *mut bindings::_NiceAgent,
+						stream, 1, buf.len() as u32, buf_ptr)
 				};
 				warn_on!(res < 0, "nice_agent_send() failed!");
 			}
@@ -279,7 +280,7 @@ impl NiceAgent {
 
 	pub fn remove_stream(&mut self, stream: u32) {
 		unsafe {
-			bindings::nice_agent_remove_stream(*self.ptr, stream)
+			bindings::nice_agent_remove_stream(self.ptr, stream)
 		}
 	}
 
@@ -298,7 +299,7 @@ impl NiceAgent {
 		let ip = try!(std::ffi::CString::new(server_ip).map_err(|_| ()));
 
 		let res = unsafe {
-			bindings::nice_agent_set_relay_info(*self.ptr, stream, component_id,
+			bindings::nice_agent_set_relay_info(self.ptr, stream, component_id,
 				ip.as_ptr(), port as u32, usr.as_ptr(), pwd.as_ptr(), typ)
 		};
 
@@ -318,7 +319,7 @@ impl NiceAgent {
 		}
 
 		let res = unsafe {
-			bindings::nice_agent_gather_candidates(*self.ptr, stream)
+			bindings::nice_agent_gather_candidates(self.ptr, stream)
 		};
 		assert!(res == TRUE);
 
@@ -331,7 +332,7 @@ impl NiceAgent {
 		-> Result<usize,()>
 	{
 		let res = unsafe {
-			bindings::nice_agent_send(*self.ptr, stream_id, component_id,
+			bindings::nice_agent_send(self.ptr, stream_id, component_id,
 				buf.len() as u32, buf.as_ptr() as *const i8)
 		};
 
@@ -340,14 +341,14 @@ impl NiceAgent {
 
 	pub fn reset(&mut self) -> Result<(),()> {
 		let res = unsafe {
-			bindings::nice_agent_restart(*self.ptr)
+			bindings::nice_agent_restart(self.ptr)
 		};
 		as_result!(res != FALSE, (), ())
 	}
 
 	pub fn set_stream_tos(&mut self, stream_id: u32, tos: i32) {
 		unsafe {
-			bindings::nice_agent_set_stream_tos(*self.ptr, stream_id, tos)
+			bindings::nice_agent_set_stream_tos(self.ptr, stream_id, tos)
 		}
 	}
 
@@ -355,7 +356,7 @@ impl NiceAgent {
 		let sw = try!(std::ffi::CString::new(software).map_err(|_| ()));
 
 		unsafe {
-			bindings::nice_agent_set_software(*self.ptr, sw.as_ptr())
+			bindings::nice_agent_set_software(self.ptr, sw.as_ptr())
 		};
 
 		Ok(())
@@ -365,7 +366,7 @@ impl NiceAgent {
 		let n = try!(std::ffi::CString::new(name).map_err(|_| ()));
 
 		unsafe {
-			bindings::nice_agent_set_stream_name(*self.ptr, stream_id, n.as_ptr());
+			bindings::nice_agent_set_stream_name(self.ptr, stream_id, n.as_ptr());
 		}
 
 		Ok(())
@@ -373,7 +374,7 @@ impl NiceAgent {
 	}
 
 	pub fn get_stream_name(&mut self, stream_id: u32) -> String {
-		let ptr = unsafe { bindings::nice_agent_get_stream_name(*self.ptr, stream_id) };
+		let ptr = unsafe { bindings::nice_agent_get_stream_name(self.ptr, stream_id) };
 		let name = unsafe { FromUtf8Pointer::from_utf8_pointer(ptr as *const i8) };
 
 		unsafe { g_free(ptr as *const libc::c_void) };
@@ -381,7 +382,7 @@ impl NiceAgent {
 	}
 
 	pub fn generate_local_sdp(&mut self) -> String {
-		let ptr = unsafe { bindings::nice_agent_generate_local_sdp(*self.ptr,) };
+		let ptr = unsafe { bindings::nice_agent_generate_local_sdp(self.ptr,) };
 		let sdp = unsafe { FromUtf8Pointer::from_utf8_pointer(ptr as *const i8) };
 
 		unsafe { g_free(ptr as *const libc::c_void) };
@@ -393,7 +394,7 @@ impl NiceAgent {
 		let s = try!(std::ffi::CString::new(sdp).map_err(|_| ()));
 
 		let count = unsafe {
-			bindings::nice_agent_parse_remote_sdp(*self.ptr, s.as_ptr())
+			bindings::nice_agent_parse_remote_sdp(self.ptr, s.as_ptr())
 		};
 		
 		as_result!(count > -1, count as usize, ())
@@ -405,7 +406,7 @@ impl NiceAgent {
 
 		unsafe {
 			let func_ptr = mem::transmute(Some(cb));
-			g_signal_connect_data(*self.ptr, signal.as_ptr(),
+			g_signal_connect_data(self.ptr, signal.as_ptr(),
 				func_ptr, data_ptr, None, 0);
 		}
 	}

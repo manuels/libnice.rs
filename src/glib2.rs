@@ -55,14 +55,16 @@ pub mod bindings {
 
 
 pub struct GMainLoop {
-	ptr: ptr::Unique<bindings::GMainLoop>
+	ptr: *mut bindings::GMainLoop
 }
 
 impl Drop for GMainLoop {
 	fn drop(&mut self) {
-		unsafe { bindings::g_main_loop_unref(*self.ptr) }
+		unsafe { bindings::g_main_loop_unref(self.ptr) }
 	}
 }
+
+unsafe impl Send for GMainLoop {}
 
 impl GMainLoop {
 	pub fn new() -> GMainLoop {
@@ -73,18 +75,18 @@ impl GMainLoop {
 			let pointer = bindings::g_main_loop_new(ctx, is_running);
 			assert!(!pointer.is_null());
 	
-			GMainLoop { ptr: ptr::Unique::new(pointer) }
+			GMainLoop { ptr: pointer }
 		}
 	}
 
-	pub fn get_context(&self) -> ptr::Unique<bindings::GMainContext> {
-		let pointer = unsafe { bindings::g_main_loop_get_context(*self.ptr) };
+	pub fn get_context(&self) -> *mut bindings::GMainContext {
+		let pointer = unsafe { bindings::g_main_loop_get_context(self.ptr) };
 		assert!(!pointer.is_null());
-		unsafe { ptr::Unique::new(pointer) }
+		pointer
 	}
 
 
 	pub fn run(&self) {
-		unsafe { bindings::g_main_loop_run(*self.ptr) };
+		unsafe { bindings::g_main_loop_run(self.ptr) };
 	}
 }

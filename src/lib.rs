@@ -1,13 +1,8 @@
-#![feature(rustc_private)]
-#![feature(core)]
-#![feature(unique)]
-#![feature(libc)]
-#![feature(collections)]
-
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 extern crate libc;
 
 pub mod bindings_agent;
@@ -20,22 +15,19 @@ mod utils;
 #[cfg(test)]
 mod tests {
 	use std::thread;
-	use std::time::duration::Duration;
-	use std::thread::sleep;
+	use std::thread::sleep_ms;
 	use std::sync::mpsc::{channel,Receiver};
 	use std::sync::{Arc,Barrier};
 	use libc;
-	use std::ptr;
 
 	fn start_agent(controlling_mode: bool) ->
-			(
-				::agent::NiceAgent,
-				u32,
-				Receiver<libc::c_uint>,
-				ptr::Unique<::bindings_agent::GMainContext>)
+	    (::agent::NiceAgent,
+	    u32,
+	    Receiver<libc::c_uint>,
+	    *mut ::bindings_agent::GMainContext)
 	{
 		let mainloop = ::glib2::GMainLoop::new();
-		let ctx = *mainloop.get_context() as *mut ::bindings_agent::GMainContext;
+		let ctx = mainloop.get_context() as *mut ::bindings_agent::GMainContext;
 		let mut agent = ::agent::NiceAgent::new(ctx, controlling_mode).unwrap();
 
 		let (stream, state_rx) = agent.add_stream(Some("mystream")).unwrap();
@@ -49,9 +41,7 @@ mod tests {
 		// must come after mainloop.run()
 		agent.gather_candidates(stream);
 
-		unsafe {
-			return (agent, stream, state_rx, ptr::Unique::new(ctx));
-		}
+		(agent, stream, state_rx, ctx)
 	}
 
 	#[test]
@@ -76,7 +66,7 @@ mod tests {
 
 				let (tx, rrx) = channel();
 				let (ttx, rx) = channel();
-				agent.stream_to_channel(*ctx, stream, remote_cred, &state_rx,
+				agent.stream_to_channel(ctx, stream, remote_cred, &state_rx,
 					ttx, rrx).unwrap();
 
 				for i in 0..20 {
@@ -103,7 +93,7 @@ mod tests {
 		let (ttx, rx) = channel();
 
 		info!("this test might take a sec");
-		left.stream_to_channel(*lctx, lstream, remote_cred, &lstate_rx,
+		left.stream_to_channel(lctx, lstream, remote_cred, &lstate_rx,
 			ttx, rrx).unwrap();
 	}
 
@@ -124,20 +114,20 @@ mod tests {
 
 				let (tx, rrx) = channel();
 				let (ttx, rx) = channel();
-				let res = left.stream_to_channel(*lctx, lstream, rcred, &lstate_rx,
+				let res = left.stream_to_channel(lctx, lstream, rcred, &lstate_rx,
 					ttx, rrx);
 
 				left_ok = res.is_ok();
 			}
 
-			sleep(Duration::seconds(i));
+			sleep_ms(i*1000);
 
 			if !right_ok {
 				let lcred = left.generate_local_sdp();
 
 				let (tx, rrx) = channel();
 				let (ttx, rx) = channel();
-				let res = right.stream_to_channel(*rctx, rstream, lcred, &rstate_rx,
+				let res = right.stream_to_channel(rctx, rstream, lcred, &rstate_rx,
 					ttx, rrx);
 
 				right_ok = res.is_ok();

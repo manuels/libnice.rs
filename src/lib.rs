@@ -9,8 +9,8 @@ pub mod bindings_agent;
 
 pub mod agent;
 pub mod glib2;
-mod from_pointer;
-mod utils;
+
+pub use agent::NiceAgent;
 
 #[cfg(test)]
 mod tests {
@@ -22,21 +22,21 @@ mod tests {
 
 	fn start_agent(controlling_mode: bool) ->
 	    (::agent::NiceAgent,
-	    u32,
-	    Receiver<libc::c_uint>,
-	    *mut ::bindings_agent::GMainContext)
+	     u32,
+	     Receiver<libc::c_uint>,
+	     *mut ::glib2::bindings::GMainContext)
 	{
 		let mainloop = ::glib2::GMainLoop::new();
-		let ctx = mainloop.get_context() as *mut ::bindings_agent::GMainContext;
+		let ctx = mainloop.get_context();
 		let mut agent = ::agent::NiceAgent::new(ctx, controlling_mode).unwrap();
 
 		let (stream, state_rx) = agent.add_stream(Some("mystream")).unwrap();
 
-		thread::spawn(move || {
+		thread::Builder::new().name("gmainloop test".to_string()).spawn(move || {
 			debug!("glib main loop starting...");
 			mainloop.run();
 			debug!("glib main loop exited.");
-		});
+		}).unwrap();
 
 		// must come after mainloop.run()
 		agent.gather_candidates(stream);
@@ -55,10 +55,10 @@ mod tests {
 
 		for (control, tx_cred, rx_cred) in vec![(true, ltx_cred, lrx_cred), (false, rtx_cred, rrx_cred)].into_iter() {
 			let bar = barrier.clone();
-			thread::spawn(move || {
+			thread::Builder::new().name("test io".to_string()).spawn(move || {
 				let (mut agent, stream, state_rx, ctx) = start_agent(control);
 
-				let cred = agent.generate_local_sdp();
+				let cred = agent.generate_local_sdp().unwrap();
 				debug!("cred={}", cred);
 				tx_cred.send(cred).unwrap();
 
@@ -74,7 +74,7 @@ mod tests {
 					assert_eq!(rx.recv().unwrap(), vec![1u8, 82+i]);
 				}
 				bar.wait();
-			});
+			}).unwrap();
 		}
 		barrier.wait();
 	}
@@ -87,14 +87,17 @@ mod tests {
 		let (mut left, lstream, lstate_rx, lctx) = start_agent(true);
 		let (mut right, _, _, _) = start_agent(false);
 
-		let remote_cred = right.generate_local_sdp();
+		let remote_cred = right.generate_local_sdp().unwrap();
 
 		let (tx, rrx) = channel();
 		let (ttx, rx) = channel();
 
 		info!("this test might take a sec");
-		left.stream_to_channel(lctx, lstream, remote_cred, &lstate_rx,
-			ttx, rrx).unwrap();
+		left.stream_to_channel(lctx,
+			lstream, remote_cred, &lstate_rx, ttx, rrx).unwrap();
+
+		drop(tx);
+		drop(rx);
 	}
 
 	#[test]
@@ -110,7 +113,7 @@ mod tests {
 
 		while !(left_ok && right_ok) {
 			if !left_ok {
-				let rcred = right.generate_local_sdp();
+				let rcred = right.generate_local_sdp().unwrap();
 
 				let (tx, rrx) = channel();
 				let (ttx, rx) = channel();
@@ -118,12 +121,14 @@ mod tests {
 					ttx, rrx);
 
 				left_ok = res.is_ok();
+				drop(tx);
+				drop(rx);
 			}
 
 			sleep_ms(i*1000);
 
 			if !right_ok {
-				let lcred = left.generate_local_sdp();
+				let lcred = left.generate_local_sdp().unwrap();
 
 				let (tx, rrx) = channel();
 				let (ttx, rx) = channel();
@@ -131,8 +136,11 @@ mod tests {
 					ttx, rrx);
 
 				right_ok = res.is_ok();
+				drop(tx);
+				drop(rx);
 			}
 
+			debug!("{}", i);
 			i -= 5;
 		}
 	}

@@ -3,9 +3,14 @@
 
 extern crate libc;
 use std::mem;
+use std::marker::Send;
 
 use std::collections::enum_set::CLike;
 
+unsafe impl Send for *mut _GMainLoop {}
+unsafe impl Sync for *mut _GMainLoop {}
+unsafe impl Send for *mut _GMainContext {}
+unsafe impl Sync for *mut _GMainContext {}
 
 /*
 GArray * g_array_new() [struct _GArray *]

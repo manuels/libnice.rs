@@ -827,6 +827,9 @@ struct GMainContext
 #[repr(C)]
 pub struct GMainContext;
 
+unsafe impl Send for GMainContext {}
+unsafe impl Sync for GMainContext {}
+
 /*
 struct NiceAgent
 */

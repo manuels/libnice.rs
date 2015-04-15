@@ -2,15 +2,14 @@ extern crate libc;
 
 use bindings_agent as bindings;
 
-use from_pointer::FromUtf8Pointer;
-use utils::spawn_thread;
-
 use std;
 use std::slice;
 use std::mem;
 use std::sync::mpsc::{Sender,Receiver,channel};
 use libc::types::common::c95::c_void;
 use libc::types::os::arch::c95::c_ulong;
+use std::thread;
+use std::ffi::CStr;
 
 macro_rules! warn_on(
 	($cond:expr, $msg:expr) => ({
@@ -32,17 +31,19 @@ macro_rules! as_result(
 
 pub struct NiceAgent {
 	pub ptr: *mut bindings::_NiceAgent,
-
 }
+
+unsafe impl Send for NiceAgent {}
+unsafe impl Sync for NiceAgent {}
 
 impl NiceAgent {
 	pub fn clone(&mut self) -> NiceAgent {
 		unsafe {
-			g_object_ref(self.ptr,);
+			g_object_ref(self.ptr);
+		}
 	
-			NiceAgent {
-				ptr: self.ptr,
-			}
+		NiceAgent {
+			ptr: self.ptr,
 		}
 	}
 }
@@ -50,22 +51,23 @@ impl NiceAgent {
 impl Drop for NiceAgent {
 	fn drop(&mut self) {
 		unsafe {
-			//debug!("NiceAgent::drop() unref({:?})", self.ptr.get());
-			g_object_unref(self.ptr,);
+			debug!("NiceAgent::drop() unref({:?})", self.ptr);
+			g_object_unref(self.ptr);
 		}
 	}
 }
 
 const FALSE: i32 = 0;
-const TRUE: i32 = 1;
+const TRUE:  i32 = 1;
 
 extern "C" fn cb_gathered(_: *mut bindings::_NiceAgent,
 		_: u32, //stream
 		tx: Box<Sender<()>>)
 {
-	//debug!("candidates gathered for agent {:?}", agent);
-
-	(*tx).send(()).ok().expect("NiceAgent cb_gathered(): Error while sending!");
+	match (*tx).send(()) {
+		Ok(_)  => {},
+		Err(err) => error!("NiceAgent cb_gathered(): Error while sending ({:?})!", err),
+	}
 }
 
 extern "C" fn cb_receive(_: *mut bindings::_NiceAgent,
@@ -73,31 +75,32 @@ extern "C" fn cb_receive(_: *mut bindings::_NiceAgent,
 		_: libc::c_uint, // component
 		len: libc::c_uint,
 		buf: *mut libc::c_char,
-		tx: *mut Sender<Vec<u8>>)
+		tx: Box<Sender<Vec<u8>>>)
 {
-	let res = unsafe {
-		let vec = slice::from_raw_parts(buf as *mut u8, len as usize).to_vec();
-		(*tx).send(vec)
+	let buf = unsafe {
+		slice::from_raw_parts(buf as *mut u8, len as usize)
 	};
 
-	if res.is_err() {
-		warn!("cb_receive failed!");
-		let txx: Box<Sender<Vec<u8>>> = unsafe { mem::transmute(tx) };
-		drop(txx);
-	};
+	match (*tx).send(buf.to_vec()) {
+		Ok(_)    => mem::forget(tx), // keep tx alive!
+		Err(err) => {
+			warn!("cb_receive failed {:?}!", err);
+			drop(tx);
+		},
+	}
 }
 
-extern "C" fn cb_state_changed(_: *mut bindings::_NiceAgent,
+extern "C" fn cb_state_changed(agent: *mut bindings::_NiceAgent,
 		_:     libc::c_uint, // stream
 		_:     libc::c_uint, // component
 		state: libc::c_uint,
-		tx:    *mut Sender<libc::c_uint>)
+		tx:    Box<Sender<libc::c_uint>>)
 {
-	//debug!("component state changed for agent {:?}: {:?}", agent, bindings::NiceComponentState::from_u32(state));
+	debug!("component state changed for agent {:?}: {:?}", agent, bindings::NiceComponentState::from_u32(state));
 
-	let res = unsafe { (*tx).send(state) };
-	if res.is_err() {
-		warn!("cb_state_changed: send() failed!");
+	match (*tx).send(state) {
+		Ok(_)    => mem::forget(tx), // keep tx alive!
+		Err(err) => error!("cb_state_changed: send() failed ({:?})!", err),
 	}
 }
 
@@ -140,20 +143,21 @@ extern "C" {
 }
 
 impl NiceAgent {
-	pub fn new(ctx: *mut bindings::GMainContext, controlling_mode: bool)
+	pub fn new(ctx: *mut ::glib2::bindings::GMainContext, controlling_mode: bool)
 			-> Result<NiceAgent,()>
 	{
+		let ctx = ctx as *mut bindings::GMainContext;
 		let rfc = bindings::NiceCompatibility::NICE_COMPATIBILITY_RFC5245;
 		let ptr = unsafe {
 			bindings::nice_agent_new(ctx, rfc.to_u32())
 		};
-
 		assert!(!ptr.is_null());
+
 		let mut agent = NiceAgent {
 			ptr: ptr,
 		};
-		try!(agent.set_controlling_mode(controlling_mode));
 
+		try!(agent.set_controlling_mode(controlling_mode));
 		Ok(agent)
 	}
 
@@ -197,8 +201,8 @@ impl NiceAgent {
 			-> Result<(u32, Receiver<libc::c_uint>),()>
 	{
 		let n_components = 1;
-		let (tx, state_rx) = channel();
-		let boxed_tx = Box::new(tx);
+		let (state_tx, state_rx) = channel();
+		let boxed_tx = Box::new(state_tx);
 
 		let stream = unsafe {
 			let func_ptr = mem::transmute(cb_state_changed);
@@ -209,6 +213,7 @@ impl NiceAgent {
 		};
 
 		if stream == 0 {
+			error!("nice_agent_add_stream() failed!");
 			return Err(());
 		}
 
@@ -220,7 +225,7 @@ impl NiceAgent {
 	}
 
 	pub fn stream_to_channel(&mut self,
-			ctx:         *mut bindings::GMainContext,
+			ctx:         *mut ::glib2::bindings::GMainContext,
 			stream:      u32,
 			remote_cred: String,
 			state_rx:    &Receiver<libc::c_uint>,
@@ -228,7 +233,8 @@ impl NiceAgent {
 			my_rx:       Receiver<Vec<u8>>)
 		-> Result<(), ()>
 	{
-		let is_ready = bindings::NiceComponentState::NICE_COMPONENT_STATE_READY.to_u32();
+		let ctx = ctx as *mut bindings::GMainContext;
+		let is_ready  = bindings::NiceComponentState::NICE_COMPONENT_STATE_READY.to_u32();
 		let is_failed = bindings::NiceComponentState::NICE_COMPONENT_STATE_FAILED.to_u32();
 
 		let my_boxed_tx = Box::new(my_tx);
@@ -242,38 +248,39 @@ impl NiceAgent {
 				func_ptr, data_ptr)
 		};
 		if res == FALSE {
+			error!("nice_agent_attach_recv() failed!");
 			return Err(());
 		}
 
 		if try!(self.parse_remote_sdp(remote_cred)) <= 0 {
-			return Err(());
+			info!("No valid remote credentials!");
+			return Err(()); // TODO: better error message!
 		}
 
-		let mut state = state_rx.recv().unwrap();
-		while state != is_ready {
-			if state == is_failed {
-				return Err(());
+		loop {
+			let state = state_rx.recv().unwrap();
+
+			if state == is_ready {
+				break
 			}
-			state = state_rx.recv().unwrap();
+			if state == is_failed {
+				return Err(())
+			}
 		}
-
 
 		/*
 		 * spawn sender thread 
 		 */
-		let self_ptr = self.ptr as c_ulong;
-		spawn_thread("NiceAgent::stream_to_channel::sender", move || {
+		let mut this = self.clone();
+		thread::Builder::new().name("NiceAgent::stream_to_channel::sender".to_string()).spawn(move || {
 			for buf in my_rx.iter() {
-				let reference:&[u8] = buf.as_ref();
-				let buf_ptr = reference.as_ptr() as *const i8;
-
-				let res = unsafe {
-					bindings::nice_agent_send(self_ptr as *mut bindings::_NiceAgent,
-						stream, 1, buf.len() as u32, buf_ptr)
-				};
-				warn_on!(res < 0, "nice_agent_send() failed!");
+				match this.send(stream, 1, &buf[..]) {
+					Err(err) => warn!("nice_agent_send() failed: {:?}!", err),
+					Ok(len) if len == buf.len() => {},
+					Ok(len) => warn!("nice_agent_send() only sent {} of {} bytes!", len, buf.len()),
+				}
 			}
-		});
+		}).unwrap();
 
 		Ok(())
 	}
@@ -321,11 +328,11 @@ impl NiceAgent {
 		let res = unsafe {
 			bindings::nice_agent_gather_candidates(self.ptr, stream)
 		};
-		assert!(res == TRUE);
+		assert!(res != FALSE);
 
-		//debug!("gathering");
+		debug!("gathering");
 		rx.recv().unwrap();
-		//debug!("gathered");
+		debug!("gathered");
 	}
 
 	pub fn send(&mut self, stream_id: u32, component_id: u32, buf: &[u8])
@@ -363,7 +370,7 @@ impl NiceAgent {
 	}
 
 	pub fn set_stream_name(&mut self, stream_id: u32, name: &str) -> Result<(),()> {
-		let n = try!(std::ffi::CString::new(name).map_err(|_| ()));
+		let n = try!(std::ffi::CString::new(name).map_err(|_| ())); // TODO: better error
 
 		unsafe {
 			bindings::nice_agent_set_stream_name(self.ptr, stream_id, n.as_ptr());
@@ -375,18 +382,21 @@ impl NiceAgent {
 
 	pub fn get_stream_name(&mut self, stream_id: u32) -> String {
 		let ptr = unsafe { bindings::nice_agent_get_stream_name(self.ptr, stream_id) };
-		let name = unsafe { FromUtf8Pointer::from_utf8_pointer(ptr as *const i8) };
+		let name = unsafe { CStr::from_ptr(ptr as *const i8) };
+		let name = std::str::from_utf8(name.to_bytes()).unwrap().to_string();
 
 		unsafe { g_free(ptr as *const libc::c_void) };
-		name.unwrap()
+		name
 	}
 
-	pub fn generate_local_sdp(&mut self) -> String {
-		let ptr = unsafe { bindings::nice_agent_generate_local_sdp(self.ptr,) };
-		let sdp = unsafe { FromUtf8Pointer::from_utf8_pointer(ptr as *const i8) };
+	pub fn generate_local_sdp(&mut self) -> Result<String,()> {
+		let ptr = unsafe { bindings::nice_agent_generate_local_sdp(self.ptr) };
+		let sdp = unsafe { CStr::from_ptr(ptr as *const i8) };
+		let sdp = try!(std::str::from_utf8(sdp.to_bytes()).map_err(|_| ()));
+		let sdp = sdp.to_string();
 
 		unsafe { g_free(ptr as *const libc::c_void) };
-		sdp.unwrap()
+		Ok(sdp)
 	}
 
 	/// will fail if no stream with the right name exists!

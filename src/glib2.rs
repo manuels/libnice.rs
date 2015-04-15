@@ -24,6 +24,7 @@ pub mod bindings {
 		(gboolean) is_running [int]
 	*/
 	#[link(name="glib-2.0")]
+	#[link(name="gobject-2.0")]
 	extern "C" {
 		pub fn g_main_loop_new(context: *mut GMainContext, is_running: libc::c_int) -> *mut GMainLoop;
 	}
@@ -65,10 +66,11 @@ impl Drop for GMainLoop {
 }
 
 unsafe impl Send for GMainLoop {}
+unsafe impl Sync for GMainLoop {}
 
 impl GMainLoop {
 	pub fn new() -> GMainLoop {
-		let ctx:*mut bindings::GMainContext = ptr::null_mut();
+		let ctx = ptr::null_mut();
 		let is_running = 0;
 		
 		unsafe {

@@ -1,423 +1,368 @@
-extern crate libc;
-
-use bindings_agent as bindings;
-
-use std;
-use std::slice;
-use std::mem;
-use std::sync::mpsc::{Sender,Receiver,channel};
-use libc::types::common::c95::c_void;
-use libc::types::os::arch::c95::c_ulong;
 use std::thread;
-use std::ffi::CStr;
+use std::any::Any;
+use std::sync::{Arc, Mutex, Barrier, MutexGuard, LockResult, Condvar};
 
-macro_rules! warn_on(
-	($cond:expr, $msg:expr) => ({
-		if $cond {
-			warn!($msg)
-		}
-	})
-);
+use libc::{c_int, c_uint, c_void};
 
-macro_rules! as_result(
-	($cond:expr, $ok:expr, $err:expr) => ({
-		if $cond {
-			Ok($ok)
-		} else {
-			Err($err)
-		}
-	})
-);
+#[cfg(test)]
+use env_logger;
+#[cfg(test)]
+use std::sync::mpsc::channel;
 
-pub struct NiceAgent {
-	pub ptr: *mut bindings::_NiceAgent,
+use bindings_agent as ffi;
+use api_agent as api;
+
+use api_gobject::{GMainLoop, GMainContext};
+use gobject::GObjectTrait;
+
+use api_agent::NiceComponentState;
+
+use gobject::GCallbackHandle;
+
+
+pub enum ControllingMode {
+	Server,
+	Client,
 }
 
-unsafe impl Send for NiceAgent {}
-unsafe impl Sync for NiceAgent {}
-
-impl NiceAgent {
-	pub fn clone(&mut self) -> NiceAgent {
-		unsafe {
-			g_object_ref(self.ptr);
-		}
-	
-		NiceAgent {
-			ptr: self.ptr,
+impl ControllingMode {
+	pub fn to_bool(&self) -> bool {
+		match *self {
+			ControllingMode::Server => false,
+			ControllingMode::Client => true,
 		}
 	}
 }
 
-impl Drop for NiceAgent {
+pub struct Agent {
+	agent:     Arc<Mutex<api::Agent>>,
+	main_loop: GMainLoop,
+	main_ctx:  GMainContext,
+}
+
+impl Drop for Agent {
 	fn drop(&mut self) {
-		unsafe {
-			debug!("NiceAgent::drop() unref({:?})", self.ptr);
-			g_object_unref(self.ptr);
-		}
+		self.main_loop.quit();
 	}
 }
 
-const FALSE: i32 = 0;
-const TRUE:  i32 = 1;
+impl Agent {
+	pub fn new(mode: ControllingMode) -> Agent {
+		let main_loop = GMainLoop::new();
+		
+		let ctx = main_loop.get_context();
+		let compat = ffi::NICE_COMPATIBILITY_RFC5245;
 
-extern "C" fn cb_gathered(_: *mut bindings::_NiceAgent,
-		_: u32, //stream
-		tx: Box<Sender<()>>)
-{
-	match (*tx).send(()) {
-		Ok(_)  => {},
-		Err(err) => error!("NiceAgent cb_gathered(): Error while sending ({:?})!", err),
+		let agent = Agent {
+			agent:     Arc::new(Mutex::new(api::Agent::new(&ctx, compat))),
+			main_loop: main_loop.clone(),
+			main_ctx:  ctx,
+		};
+		agent.set_controlling_mode(mode);
+
+		thread::spawn(move || {
+			main_loop.run();
+		});
+
+		agent
 	}
-}
 
-extern "C" fn cb_receive(_: *mut bindings::_NiceAgent,
-		_: libc::c_uint, // stream
-		_: libc::c_uint, // component
-		len: libc::c_uint,
-		buf: *mut libc::c_char,
-		tx: Box<Sender<Vec<u8>>>)
-{
-	let buf = unsafe {
-		slice::from_raw_parts(buf as *mut u8, len as usize)
-	};
-
-	match (*tx).send(buf.to_vec()) {
-		Ok(_)    => mem::forget(tx), // keep tx alive!
-		Err(err) => {
-			warn!("cb_receive failed {:?}!", err);
-			drop(tx);
-		},
+	pub fn set_software(&self, name: &str) {
+		let lock = self.agent.lock().unwrap();
+		lock.set_software(name);
 	}
-}
 
-extern "C" fn cb_state_changed(agent: *mut bindings::_NiceAgent,
-		_:     libc::c_uint, // stream
-		_:     libc::c_uint, // component
-		state: libc::c_uint,
-		tx:    Box<Sender<libc::c_uint>>)
-{
-	debug!("component state changed for agent {:?}: {:?}", agent, bindings::NiceComponentState::from_u32(state));
-
-	match (*tx).send(state) {
-		Ok(_)    => mem::forget(tx), // keep tx alive!
-		Err(err) => error!("cb_state_changed: send() failed ({:?})!", err),
+	pub fn get_context(&self) -> &GMainContext {
+		&self.main_ctx
 	}
-}
 
-#[repr(C)]
-pub struct GClosure;
-
-extern "C" {
-	#[link(name="glib-2.0")]
-	fn g_free(ptr: *const libc::c_void);
-
-	#[link(name="glib-2.0")]
-	pub fn g_type_init();
-
-	#[link(name="glib-2.0")]
-	pub fn g_object_ref(ptr: *mut bindings::_NiceAgent);
-
-	#[link(name="glib-2.0")]
-	pub fn g_object_unref(ptr: *mut bindings::_NiceAgent);
-
-	#[link(name="glib-2.0")]
-	pub fn g_signal_connect_data(instance: *mut bindings::_NiceAgent,
-			detailed_signal: *const libc::c_char,
-			c_handler:       Option<extern fn()>,
-			data:            *mut libc::c_void,
-			destroy_data:    Option<extern fn(*mut libc::c_void, *mut GClosure)>,
-			connect_flags:   libc::c_uint)
-		-> libc::c_ulong;
-
-	#[link(name="glib-2.0")]
-	pub fn g_object_set(instance:      *mut bindings::_NiceAgent,
-	                    property_name: *const libc::c_char,
-	                    value:         libc::c_int,
-	                    null:          libc::c_int);
-
-	#[link(name="glib-2.0")]
-	pub fn g_object_get(instance:      *mut bindings::_NiceAgent,
-	                    property_name: *const libc::c_char,
-	                    value:         *mut libc::c_int,
-	                    null:          libc::c_int);
-}
-
-impl NiceAgent {
-	pub fn new(ctx: *mut ::glib2::bindings::GMainContext, controlling_mode: bool)
-			-> Result<NiceAgent,()>
+	pub fn add_stream<'a, F:Fn(&[u8])>(
+				&'a self, name: &str,
+				n_components:   usize,
+				callback:       F)
+		-> Option<Stream<'a,F>>
 	{
-		let ctx = ctx as *mut bindings::GMainContext;
-		let rfc = bindings::NiceCompatibility::NICE_COMPATIBILITY_RFC5245;
-		let ptr = unsafe {
-			bindings::nice_agent_new(ctx, rfc.to_u32())
-		};
-		assert!(!ptr.is_null());
+		let stream_id = {
+			let lock = self.agent.lock().unwrap();
 
-		let mut agent = NiceAgent {
-			ptr: ptr,
-		};
-
-		try!(agent.set_controlling_mode(controlling_mode));
-		Ok(agent)
-	}
-
-	pub fn new_reliable(controlling_mode: bool) -> Result<NiceAgent,()> {
-		let ctx = 0 as *mut bindings::GMainContext;
-		let rfc = bindings::NiceCompatibility::NICE_COMPATIBILITY_RFC5245;
-		let ptr = unsafe {
-			bindings::nice_agent_new_reliable(ctx, rfc.to_u32())
-		};
-		assert!(!ptr.is_null());
-
-		let mut agent = NiceAgent {
-			ptr: ptr,
-		};
-		try!(agent.set_controlling_mode(controlling_mode));
-
-		Ok(agent)
-	}
-
-	pub fn set_controlling_mode(&mut self, controlling_mode: bool) -> Result<(),()> {
-		let value = if controlling_mode {TRUE} else {FALSE};
-		let prop = try!(std::ffi::CString::new("controlling-mode").map_err(|_| ()));
-
-		unsafe {
-			g_object_set(self.ptr, prop.as_ptr(), value, 0);
-		};
-
-		Ok(())
-	}
-
-	pub fn get_controlling_mode(&mut self) -> Result<bool,()> {
-		let prop = try!(std::ffi::CString::new("controlling-mode").map_err(|_| ()));
-		let mut value = -1 as libc::c_int;
-		unsafe {
-			g_object_get(self.ptr, prop.as_ptr(), &mut value, 0);
-		}
-		Ok(value != FALSE)
-	}
-
-	pub fn add_stream(&mut self, name: Option<&str>)
-			-> Result<(u32, Receiver<libc::c_uint>),()>
-	{
-		let n_components = 1;
-		let (state_tx, state_rx) = channel();
-		let boxed_tx = Box::new(state_tx);
-
-		let stream = unsafe {
-			let func_ptr = mem::transmute(cb_state_changed);
-			let data_ptr = mem::transmute(boxed_tx);
-			self.on_signal("component_state_changed", func_ptr, data_ptr);
-
-			bindings::nice_agent_add_stream(self.ptr, n_components) as u32
-		};
-
-		if stream == 0 {
-			error!("nice_agent_add_stream() failed!");
-			return Err(());
-		}
-
-		if name.is_some() {
-			try!(self.set_stream_name(stream, name.unwrap()));
-		}
-
-		Ok((stream, state_rx))
-	}
-
-	pub fn stream_to_channel(&mut self,
-			ctx:         *mut ::glib2::bindings::GMainContext,
-			stream:      u32,
-			remote_cred: String,
-			state_rx:    &Receiver<libc::c_uint>,
-			my_tx:       Sender<Vec<u8>>,
-			my_rx:       Receiver<Vec<u8>>)
-		-> Result<(), ()>
-	{
-		let ctx = ctx as *mut bindings::GMainContext;
-		let is_ready  = bindings::NiceComponentState::NICE_COMPONENT_STATE_READY.to_u32();
-		let is_failed = bindings::NiceComponentState::NICE_COMPONENT_STATE_FAILED.to_u32();
-
-		let my_boxed_tx = Box::new(my_tx);
-
-		let res = unsafe {
-			let func_ptr = mem::transmute(cb_receive);
-			let data_ptr = mem::transmute(my_boxed_tx);
-			/* attaching a recv() calback must come BEFORE setting
-			 * remote credentials! */
-			bindings::nice_agent_attach_recv(self.ptr, stream, 1, ctx,
-				func_ptr, data_ptr)
-		};
-		if res == FALSE {
-			error!("nice_agent_attach_recv() failed!");
-			return Err(());
-		}
-
-		if try!(self.parse_remote_sdp(remote_cred)) <= 0 {
-			info!("No valid remote credentials!");
-			return Err(()); // TODO: better error message!
-		}
-
-		loop {
-			let state = state_rx.recv().unwrap();
-
-			if state == is_ready {
-				break
+			if let Some(id) = lock.add_stream(n_components) {
+				id
+			} else {
+				return None;
 			}
-			if state == is_failed {
-				return Err(())
+		};
+
+		let stream = Stream::new(&self, stream_id, callback);
+
+		if let Some(s) = stream {
+			s.set_name(name);
+
+			if s.gather_candidates() {
+				return Some(s);
 			}
 		}
+
+		None
+	}
+
+	pub fn watch_state<'a>(&'a self, stream_id: c_uint, component_id: c_uint)
+		-> (Arc<(Mutex<NiceComponentState>,Condvar)>,
+			GCallbackHandle<'a, api::Agent, Agent>)
+	{
+		let init_state = NiceComponentState::NICE_COMPONENT_STATE_DISCONNECTED;
+		let state = Arc::new((Mutex::new(init_state), Condvar::new()));
+		
+		let state1 = state.clone();
+		let state_cb = move |s, c, new_state| {
+			if stream_id != s || component_id != c {
+				return false; // TODO ???
+			}
+
+			debug!("new state: {:?}", new_state);
+
+			let &(ref lock, ref cvar) = &*state1;
+			let mut state_var = lock.lock().unwrap();
+
+			*state_var = new_state;
+			cvar.notify_all();
+
+			false // TODO: correct?
+		};
+
+		let cb_handle = self.on_component_state_changed(state_cb);
+
+		(state, cb_handle)
+	}
+
+	fn set_controlling_mode(&self, mode: ControllingMode) {
+		//let lock = self.agent.lock().unwrap();
+		//lock.set_property("controlling-mode", mode.to_bool() as *mut c_void);
+		let mode = mode.to_bool() as *mut c_void;
+		GObjectTrait::set_property(self, "controlling-mode", mode);
+	}
+
+	pub fn generate_local_sdp(&self) -> Option<String> {
+		let lock = self.agent.lock().unwrap();
+		lock.generate_local_sdp()
+	}
+
+	/// Stream::set_name() is required before calling this function
+	pub fn parse_remote_sdp(&self, sdp: &str) -> Option<usize> {
+		let lock = self.agent.lock().unwrap();
+		lock.parse_remote_sdp(sdp)
+	}
+
+	#[must_use]
+	fn on_candidate_gathering_done<'a,'b, F:Any>(&'a self, cb: F)
+		-> GCallbackHandle<'a,api::Agent, Self>
+		where F: Any + Fn(c_uint) -> bool
+	{
+		#[allow(unused_variables)]
+		extern fn wrapper<G>(_agent:    *mut ffi::_NiceAgent,
+		                     stream_id: c_uint,
+		                     user_data: *mut c_void)
+			-> c_int
+				where G: Fn(c_uint) -> bool
+		{
+			let closure = user_data as *mut G;
+			unsafe {
+				let res = (*closure)(stream_id);
+				return res as c_int;
+			}
+		}
+
+		let func_ptr: extern fn() = unsafe {
+			::std::mem::transmute(wrapper::<F>)
+		};
+
+		GObjectTrait::on_signal(self, "candidate-gathering-done", cb, func_ptr)
+	}
+
+	#[must_use]
+	fn on_component_state_changed<'a, F:Any>(&'a self, cb: F)
+		-> GCallbackHandle<'a, api::Agent, Self>
+		where F: Any + Fn(c_uint, c_uint, NiceComponentState) -> bool
+	{
+		extern fn wrapper<G>(_/*agent*/:   *mut ffi::_NiceAgent,
+		                     stream_id:    c_uint,
+		                     component_id: c_uint,
+		                     state:        c_uint,
+		                     user_data:    *mut c_void)
+			-> c_int
+			where G: Fn(c_uint, c_uint, NiceComponentState) -> bool
+		{
+			let closure = user_data as *mut G;
+
+			unsafe {
+				let state = ::std::mem::transmute(state);
+				let res = (*closure)(stream_id, component_id, state);
+				return res as c_int;
+			}
+		}
+
+		let func_ptr: extern fn() = unsafe {
+			::std::mem::transmute(wrapper::<F>)
+		};
+
+		GObjectTrait::on_signal(self, "component-state-changed", cb, func_ptr)
+	}
+
+	#[must_use]
+	fn gather_candidates(&self, stream_id: c_uint) -> bool {
+		let lock = self.agent.lock().unwrap();
+		lock.gather_candidates(stream_id)
+	}
+}
+
+impl GObjectTrait<api::Agent> for Agent {
+	fn as_raw(&self) -> LockResult<MutexGuard<api::Agent>> {
+		self.agent.lock()
+	}
+}
+
+// TODO: remove lifetime
+pub struct Stream<'a,F:Fn(&[u8])> {
+	agent:          &'a Agent,
+	stream_id:      c_uint,
+	state:          Arc<(Mutex<NiceComponentState>, Condvar)>,
+	rx_callback:    Box<F>,
+	state_callback: GCallbackHandle<'a, api::Agent, Agent>
+}
+
+impl<'a,F:Fn(&[u8])> Stream<'a,F> {
+	fn new(agent: &'a Agent, stream_id: c_uint, rx_callback: F)
+		-> Option<Stream<'a, F>>
+	{
+		let component_id = 1;
+
+		let (state, state_cb) = agent.watch_state(stream_id, component_id);
+
+		let mut s = Stream {
+			agent:          agent,
+			stream_id:      stream_id,
+			state:          state,
+			rx_callback:    Box::new(rx_callback),
+			state_callback: state_cb,
+		};
+
+		if s.attach_recv(component_id).is_ok() {
+			Some(s)
+		} else {
+			None
+		}
+	}
+
+	// TODO use return value
+	fn gather_candidates(&self) -> bool {
+		let barrier1 = Arc::new(Barrier::new(2));
+		let barrier2 = barrier1.clone();
+
+		let expected_stream_id = self.stream_id;
+
+		let on_done_cb = move |actual_stream_id:c_uint| {
+			assert_eq!(actual_stream_id, expected_stream_id);
+			barrier1.wait();
+
+			true // TODO: is this correct, or is it 'false/true'?
+		};
+
+		let cb  = self.agent.on_candidate_gathering_done(on_done_cb);
+		let res = self.agent.gather_candidates(self.stream_id);
 
 		/*
-		 * spawn sender thread 
+		 * Attention: We must wait for the callback to be called, then we can
+		 * drop the callback (and thus its move'd variables).
 		 */
-		let mut this = self.clone();
-		thread::Builder::new().name("NiceAgent::stream_to_channel::sender".to_string()).spawn(move || {
-			for buf in my_rx.iter() {
-				match this.send(stream, 1, &buf[..]) {
-					Err(err) => warn!("nice_agent_send() failed: {:?}!", err),
-					Ok(len) if len == buf.len() => {},
-					Ok(len) => warn!("nice_agent_send() only sent {} of {} bytes!", len, buf.len()),
-				}
-			}
-		}).unwrap();
+		barrier2.wait();
+		drop(cb);
 
-		Ok(())
+		res
 	}
 
-	pub fn remove_stream(&mut self, stream: u32) {
-		unsafe {
-			bindings::nice_agent_remove_stream(self.ptr, stream)
-		}
-	}
-
-	pub fn set_relay_info(&mut self,
-			stream: u32,
-			component_id: u32,
-			server_ip: &str,
-			port: u16,
-			username: &str,
-			password: &str,
-			typ: u32)
-		-> Result<(),()>
+	pub fn get_local_credentials(&self)
+		-> Option<(String, String)>
 	{
-		let usr = try!(std::ffi::CString::new(username).map_err(|_| ()));
-		let pwd = try!(std::ffi::CString::new(password).map_err(|_| ()));
-		let ip = try!(std::ffi::CString::new(server_ip).map_err(|_| ()));
-
-		let res = unsafe {
-			bindings::nice_agent_set_relay_info(self.ptr, stream, component_id,
-				ip.as_ptr(), port as u32, usr.as_ptr(), pwd.as_ptr(), typ)
-		};
-
-		as_result!(res != FALSE, (), ())
+		let lock = self.agent.as_raw().unwrap();
+		lock.get_local_credentials(self.stream_id)
 	}
 
-	pub fn gather_candidates(&mut self, stream: u32) {
-		/* ! A main loop must be running before caling this method !
-		 * This method is blocking */
-		let (tx, rx): (Sender<()>,_) = channel();
-		let boxed_tx = Box::new(tx);
-
-		unsafe {
-			let data_ptr = mem::transmute(boxed_tx);
-			let func_ptr = mem::transmute(cb_gathered);
-			self.on_signal("candidate_gathering_done", func_ptr, data_ptr);
-		}
-
-		let res = unsafe {
-			bindings::nice_agent_gather_candidates(self.ptr, stream)
-		};
-		assert!(res != FALSE);
-
-		debug!("gathering");
-		rx.recv().unwrap();
-		debug!("gathered");
+	pub fn set_remote_credentials(&self, ufrag: &str, pwd: &str) -> bool {
+		let lock = self.agent.as_raw().unwrap();
+		lock.set_remote_credentials(self.stream_id, ufrag, pwd)
 	}
 
-	pub fn send(&mut self, stream_id: u32, component_id: u32, buf: &[u8])
-		-> Result<usize,()>
+	pub fn send(&self, component_id: c_uint, buf: &[u8]) -> Option<usize> {
+		let lock = self.agent.as_raw().unwrap();
+		lock.send(self.stream_id, component_id, buf)
+	}
+
+	fn set_name(&self, name: &str) -> bool {
+		let lock = self.agent.as_raw().unwrap();
+		lock.set_stream_name(self.stream_id, name)
+	}
+
+	pub fn get_name(&self) -> Option<String> {
+		let lock = self.agent.as_raw().unwrap();
+		lock.get_stream_name(self.stream_id)
+	}
+
+	pub fn attach_recv(&mut self,
+	                   component_id: c_uint)
+		-> Result<(), ()>
 	{
-		let res = unsafe {
-			bindings::nice_agent_send(self.ptr, stream_id, component_id,
-				buf.len() as u32, buf.as_ptr() as *const i8)
-		};
+		let cb   = &mut self.rx_callback;
+		let ctx  = self.agent.get_context();
+		let lock = self.agent.as_raw().unwrap();
 
-		as_result!(res > -1, res as usize, ())
-	}
-
-	pub fn reset(&mut self) -> Result<(),()> {
-		let res = unsafe {
-			bindings::nice_agent_restart(self.ptr)
-		};
-		as_result!(res != FALSE, (), ())
-	}
-
-	pub fn set_stream_tos(&mut self, stream_id: u32, tos: i32) {
-		unsafe {
-			bindings::nice_agent_set_stream_tos(self.ptr, stream_id, tos)
+		if !lock.attach_recv(self.stream_id, component_id, ctx, cb) {
+			Err(())
+		} else {
+			Ok(())
 		}
 	}
+}
 
-	pub fn set_software(&mut self, software: &str) -> Result<(),()> {
-		let sw = try!(std::ffi::CString::new(software).map_err(|_| ()));
+impl<'a,F:Fn(&[u8])> Drop for Stream<'a,F> {
+	fn drop(&mut self) {
+		let ctx  = self.agent.get_context();
+		let lock = self.agent.as_raw().unwrap();
 
-		unsafe {
-			bindings::nice_agent_set_software(self.ptr, sw.as_ptr())
-		};
-
-		Ok(())
+		lock.unattach_recv(self.stream_id, 1, ctx);
+		lock.remove_stream(self.stream_id);
 	}
+}
 
-	pub fn set_stream_name(&mut self, stream_id: u32, name: &str) -> Result<(),()> {
-		let n = try!(std::ffi::CString::new(name).map_err(|_| ())); // TODO: better error
+/// Note: you must be connected to a LAN/Internet to pass this test
+#[test]
+fn test() {
+	env_logger::init().unwrap();
 
-		unsafe {
-			bindings::nice_agent_set_stream_name(self.ptr, stream_id, n.as_ptr());
-		}
+	let alice = Agent::new(ControllingMode::Server);
+	let bob   = Agent::new(ControllingMode::Client);
 
-		Ok(())
+	let (alice_tx, alice_rx) = channel();
+	let (bob_tx, bob_rx)     = channel();
+	let alice_cb = move |buf:&[u8]| alice_tx.send(buf.to_vec()).unwrap();
+	let bob_cb   = move |buf:&[u8]| bob_tx.send(buf.to_vec()).unwrap();
+	
+	let a = alice.add_stream("test", 1, alice_cb).unwrap();
+	let b = bob.add_stream("test", 1, bob_cb).unwrap();
 
-	}
+	let cred_alice = alice.generate_local_sdp().unwrap();
+	let cred_bob   = bob.generate_local_sdp().unwrap();
 
-	pub fn get_stream_name(&mut self, stream_id: u32) -> String {
-		let ptr = unsafe { bindings::nice_agent_get_stream_name(self.ptr, stream_id) };
-		let name = unsafe { CStr::from_ptr(ptr as *const i8) };
-		let name = std::str::from_utf8(name.to_bytes()).unwrap().to_string();
+	let count = alice.parse_remote_sdp(&cred_bob[..]);
+	assert!(count.unwrap() > 0);
+	let count = bob.parse_remote_sdp(&cred_alice[..]);
+	assert!(count.unwrap() > 0);
 
-		unsafe { g_free(ptr as *const libc::c_void) };
-		name
-	}
+	::std::thread::sleep_ms(1000);
 
-	pub fn generate_local_sdp(&mut self) -> Result<String,()> {
-		let ptr = unsafe { bindings::nice_agent_generate_local_sdp(self.ptr) };
-		let sdp = unsafe { CStr::from_ptr(ptr as *const i8) };
-		let sdp = try!(std::str::from_utf8(sdp.to_bytes()).map_err(|_| ()));
-		let sdp = sdp.to_string();
+	assert_eq!(a.send(1, &[1,2,3]), Some(3));
+	assert_eq!(b.send(1, &[6,7,8,9]), Some(4));
+	assert_eq!(a.send(1, &[4,5,6]), Some(3));
 
-		unsafe { g_free(ptr as *const libc::c_void) };
-		Ok(sdp)
-	}
-
-	/// will fail if no stream with the right name exists!
-	pub fn parse_remote_sdp(&mut self, sdp: String) -> Result<usize,()> {
-		let s = try!(std::ffi::CString::new(sdp).map_err(|_| ()));
-
-		let count = unsafe {
-			bindings::nice_agent_parse_remote_sdp(self.ptr, s.as_ptr())
-		};
-		
-		as_result!(count > -1, count as usize, ())
-	}
-
-	fn on_signal(&mut self, signal: &str, cb: extern fn(), data_ptr: *mut libc::c_void)
-	{
-		let signal = std::ffi::CString::new(signal).unwrap();
-
-		unsafe {
-			let func_ptr = mem::transmute(Some(cb));
-			g_signal_connect_data(self.ptr, signal.as_ptr(),
-				func_ptr, data_ptr, None, 0);
-		}
-	}
+	assert_eq!(alice_rx.recv().unwrap(), [6,7,8,9]);
+	assert_eq!(bob_rx.recv().unwrap(), [1,2,3]);
+	assert_eq!(bob_rx.recv().unwrap(), [4,5,6]);
 }

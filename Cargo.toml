@@ -9,3 +9,5 @@ authors = ["Manuel Schölling <manuel.schoelling@gmx.de>"]
 [dependencies]
 log = "*"
 libc = "*"
+bitflags = "*"
+env_logger = "*"

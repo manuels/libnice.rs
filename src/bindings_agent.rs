@@ -1,11 +1,208 @@
-extern crate libc;
-use std::mem;
+use libc;
+
+pub const FALSE:libc::c_int = 0;
+pub const TRUE:libc::c_int = !FALSE;
+
+//#[link(name="glib-2.0")]
+extern "C" {
+	pub fn g_free(addr: *mut libc::c_int);
+}
+
+//#[link(name="glib-2.0")]
+extern "C" {
+	pub fn g_object_unref(addr: *mut _NiceAgent);
+}
+
+/*
+struct _NiceAgent
+*/
+#[repr(C)]
+pub struct _NiceAgent;
+
+#[repr(C)]
+pub struct _NiceAddress;
+#[repr(C)]
+pub struct _GList;
+#[repr(C)]
+pub struct _GSList;
+#[repr(C)]
+pub struct _GError;
+#[repr(C)]
+pub struct _GSocket;
+#[repr(C)]
+pub struct _GIOStream;
+#[repr(C)]
+pub struct _GObject;
+#[repr(C)]
+pub struct _GObjectClass;
+#[repr(C)]
+pub struct _GMainContext;
+#[repr(C)]
+pub struct _GCancellable;
+#[repr(C)]
+pub struct _GCancellablePrivate;
+#[repr(C)]
+pub struct _GOutputVector;
+#[repr(C)]
+pub struct _GInputVector;
+#[repr(C)]
+pub struct sockaddr;
+
+/*
+struct _NiceCandidate
+		(NiceCandidateType) type [NiceCandidateType]
+		(NiceCandidateTransport) transport [NiceCandidateTransport]
+		(NiceAddress) addr [struct _NiceAddress]
+		(NiceAddress) base_addr [struct _NiceAddress]
+		(guint32) priority [unsigned int]
+		(guint) stream_id [unsigned int]
+		(guint) component_id [unsigned int]
+		(gchar [33]) foundation [char [33]]
+		(gchar *) username [char *]
+		(gchar *) password [char *]
+		(TurnServer *) turn [struct _TurnServer *]
+		(gpointer) sockptr [void *]
+*/
+#[repr(C)]
+pub struct _NiceCandidate {
+	pub type_: libc::c_uint,
+	pub transport: libc::c_uint,
+	pub addr: _NiceAddress,
+	pub base_addr: _NiceAddress,
+	pub priority: libc::c_uint,
+	pub stream_id: libc::c_uint,
+	pub component_id: libc::c_uint,
+	pub foundation: [libc::c_char; 33],
+	pub username: *mut libc::c_char,
+	pub password: *mut libc::c_char,
+	pub turn: *mut _TurnServer,
+	pub sockptr: *mut libc::c_void,
+}
+
+/*
+struct _TurnServer
+		(gint) ref_count [int]
+		(NiceAddress) server [struct _NiceAddress]
+		(gchar *) username [char *]
+		(gchar *) password [char *]
+		(NiceRelayType) type [NiceRelayType]
+*/
+#[repr(C)]
+pub struct _TurnServer {
+	pub ref_count: libc::c_int,
+	pub server: _NiceAddress,
+	pub username: *mut libc::c_char,
+	pub password: *mut libc::c_char,
+	pub type_: libc::c_uint,
+}
+
+/*
+struct _NiceAgentClass
+		(GObjectClass) parent_class [struct _GObjectClass]
+*/
+#[repr(C)]
+pub struct _NiceAgentClass {
+	pub parent_class: _GObjectClass,
+}
+
+/*
+struct NiceCandidate
+		(NiceCandidateType) type [NiceCandidateType]
+		(NiceCandidateTransport) transport [NiceCandidateTransport]
+		(NiceAddress) addr [struct _NiceAddress]
+		(NiceAddress) base_addr [struct _NiceAddress]
+		(guint32) priority [unsigned int]
+		(guint) stream_id [unsigned int]
+		(guint) component_id [unsigned int]
+		(gchar [33]) foundation [char [33]]
+		(gchar *) username [char *]
+		(gchar *) password [char *]
+		(TurnServer *) turn [struct _TurnServer *]
+		(gpointer) sockptr [void *]
+*/
+#[repr(C)]
+pub struct NiceCandidate {
+	pub type_: libc::c_uint,
+	pub transport: libc::c_uint,
+	pub addr: _NiceAddress,
+	pub base_addr: _NiceAddress,
+	pub priority: libc::c_uint,
+	pub stream_id: libc::c_uint,
+	pub component_id: libc::c_uint,
+	pub foundation: [libc::c_char; 33],
+	pub username: *mut libc::c_char,
+	pub password: *mut libc::c_char,
+	pub turn: *mut _TurnServer,
+	pub sockptr: *mut libc::c_void,
+}
+
+/*
+struct GMainContext
+*/
+#[repr(C)]
+pub struct GMainContext;
+
+/*
+struct NiceAgent
+*/
+#[repr(C)]
+pub struct NiceAgent;
+
+/*
+struct GSList
+		(gpointer) data [void *]
+		(GSList *) next [struct _GSList *]
+*/
+#[repr(C)]
+pub struct GSList {
+	pub data: *mut libc::c_void,
+	pub next: *mut _GSList,
+}
+
+/*
+struct NiceOutputMessage
+		(GOutputVector *) buffers [struct _GOutputVector *]
+		(gint) n_buffers [int]
+*/
+#[repr(C)]
+pub struct NiceOutputMessage {
+	pub buffers: *mut _GOutputVector,
+	pub n_buffers: libc::c_int,
+}
+
+/*
+struct GCancellable
+		(GObject) parent_instance [struct _GObject]
+		(GCancellablePrivate *) priv [struct _GCancellablePrivate *]
+*/
+#[repr(C)]
+pub struct GCancellable {
+	pub parent_instance: _GObject,
+	pub priv_: *mut _GCancellablePrivate,
+}
+
+/*
+struct NiceInputMessage
+		(GInputVector *) buffers [struct _GInputVector *]
+		(gint) n_buffers [int]
+		(NiceAddress *) from [struct _NiceAddress *]
+		(gsize) length [unsigned long]
+*/
+#[repr(C)]
+pub struct NiceInputMessage {
+	pub buffers: *mut _GInputVector,
+	pub n_buffers: libc::c_int,
+	pub from: *mut _NiceAddress,
+	pub length: libc::c_ulong,
+}
 
 /*
 void nice_address_init()
 	(NiceAddress *) addr [struct _NiceAddress *]
 */
+#[link(name="glib-2.0")]
 #[link(name="nice")]
+#[link(name="glib-2.0")]
 extern "C" {
 	pub fn nice_address_init(addr: *mut _NiceAddress);
 }
@@ -252,15 +449,6 @@ extern "C" {
 
 
 /*
-void nice_debug_init()
-*/
-#[link(name="nice")]
-extern "C" {
-	pub fn nice_debug_init();
-}
-
-
-/*
 void nice_debug_enable()
 	(gboolean) with_stun [int]
 */
@@ -281,16 +469,6 @@ extern "C" {
 
 
 /*
-void nice_debug()
-	(const char *) fmt
-*/
-#[link(name="nice")]
-extern "C" {
-	pub fn nice_debug(fmt: *const libc::c_char);
-}
-
-
-/*
 GType nice_agent_get_type() [unsigned long]
 */
 #[link(name="nice")]
@@ -301,23 +479,23 @@ extern "C" {
 
 /*
 NiceAgent * nice_agent_new() [struct _NiceAgent *]
-	(GMainContext *) ctx [struct GMainContext *]
+	(GMainContext *) ctx [struct _GMainContext *]
 	(NiceCompatibility) compat [NiceCompatibility]
 */
 #[link(name="nice")]
 extern "C" {
-	pub fn nice_agent_new(ctx: *mut GMainContext, compat: libc::c_uint) -> *mut _NiceAgent;
+	pub fn nice_agent_new(ctx: *mut _GMainContext, compat: libc::c_uint) -> *mut _NiceAgent;
 }
 
 
 /*
 NiceAgent * nice_agent_new_reliable() [struct _NiceAgent *]
-	(GMainContext *) ctx [struct GMainContext *]
+	(GMainContext *) ctx [struct _GMainContext *]
 	(NiceCompatibility) compat [NiceCompatibility]
 */
 #[link(name="nice")]
 extern "C" {
-	pub fn nice_agent_new_reliable(ctx: *mut GMainContext, compat: libc::c_uint) -> *mut _NiceAgent;
+	pub fn nice_agent_new_reliable(ctx: *mut _GMainContext, compat: libc::c_uint) -> *mut _NiceAgent;
 }
 
 
@@ -427,11 +605,11 @@ int nice_agent_set_remote_candidates()
 	(NiceAgent *) agent [struct _NiceAgent *]
 	(guint) stream_id [unsigned int]
 	(guint) component_id [unsigned int]
-	(const GSList *) candidates [const struct GSList *]
+	(const GSList *) candidates [const struct _GSList *]
 */
 #[link(name="nice")]
 extern "C" {
-	pub fn nice_agent_set_remote_candidates(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint, candidates: *const GSList) -> libc::c_int;
+	pub fn nice_agent_set_remote_candidates(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint, candidates: *const _GSList) -> libc::c_int;
 }
 
 
@@ -450,26 +628,42 @@ extern "C" {
 
 
 /*
-GSList * nice_agent_get_local_candidates() [struct GSList *]
+gint nice_agent_send_messages_nonblocking() [int]
 	(NiceAgent *) agent [struct _NiceAgent *]
 	(guint) stream_id [unsigned int]
 	(guint) component_id [unsigned int]
+	(const NiceOutputMessage *) messages [const NiceOutputMessage *]
+	(guint) n_messages [unsigned int]
+	(GCancellable *) cancellable [struct _GCancellable *]
+	(GError **) error [struct _GError **]
 */
 #[link(name="nice")]
 extern "C" {
-	pub fn nice_agent_get_local_candidates(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint) -> *mut GSList;
+	pub fn nice_agent_send_messages_nonblocking(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint, messages: *const NiceOutputMessage, n_messages: libc::c_uint, cancellable: *mut _GCancellable, error: *mut *mut _GError) -> libc::c_int;
 }
 
 
 /*
-GSList * nice_agent_get_remote_candidates() [struct GSList *]
+GSList * nice_agent_get_local_candidates() [struct _GSList *]
 	(NiceAgent *) agent [struct _NiceAgent *]
 	(guint) stream_id [unsigned int]
 	(guint) component_id [unsigned int]
 */
 #[link(name="nice")]
 extern "C" {
-	pub fn nice_agent_get_remote_candidates(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint) -> *mut GSList;
+	pub fn nice_agent_get_local_candidates(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint) -> *mut _GSList;
+}
+
+
+/*
+GSList * nice_agent_get_remote_candidates() [struct _GSList *]
+	(NiceAgent *) agent [struct _NiceAgent *]
+	(guint) stream_id [unsigned int]
+	(guint) component_id [unsigned int]
+*/
+#[link(name="nice")]
+extern "C" {
+	pub fn nice_agent_get_remote_candidates(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint) -> *mut _GSList;
 }
 
 
@@ -484,17 +678,92 @@ extern "C" {
 
 
 /*
+gboolean nice_agent_restart_stream() [int]
+	(NiceAgent *) agent [struct _NiceAgent *]
+	(guint) stream_id [unsigned int]
+*/
+#[link(name="nice")]
+extern "C" {
+	pub fn nice_agent_restart_stream(agent: *mut _NiceAgent, stream_id: libc::c_uint) -> libc::c_int;
+}
+
+
+/*
 gboolean nice_agent_attach_recv() [int]
 	(NiceAgent *) agent [struct _NiceAgent *]
 	(guint) stream_id [unsigned int]
 	(guint) component_id [unsigned int]
-	(GMainContext *) ctx [struct GMainContext *]
+	(GMainContext *) ctx [struct _GMainContext *]
 	(NiceAgentRecvFunc) func [void (*)(struct _NiceAgent *, unsigned int, unsigned int, unsigned int, char *, void *)]
 	(gpointer) data [void *]
 */
 #[link(name="nice")]
 extern "C" {
-	pub fn nice_agent_attach_recv(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint, ctx: *mut GMainContext, func: Option<extern fn(*mut _NiceAgent, libc::c_uint, libc::c_uint, libc::c_uint, *mut libc::c_char, *mut libc::c_void)>, data: *mut libc::c_void) -> libc::c_int;
+	pub fn nice_agent_attach_recv(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint, ctx: *mut _GMainContext, func: Option<extern fn(*mut _NiceAgent, libc::c_uint, libc::c_uint, libc::c_uint, *mut libc::c_char, *mut libc::c_void)>, data: *mut libc::c_void) -> libc::c_int;
+}
+
+
+/*
+gssize nice_agent_recv() [long]
+	(NiceAgent *) agent [struct _NiceAgent *]
+	(guint) stream_id [unsigned int]
+	(guint) component_id [unsigned int]
+	(guint8 *) buf [unsigned char *]
+	(gsize) buf_len [unsigned long]
+	(GCancellable *) cancellable [struct _GCancellable *]
+	(GError **) error [struct _GError **]
+*/
+#[link(name="nice")]
+extern "C" {
+	pub fn nice_agent_recv(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint, buf: *mut libc::c_uchar, buf_len: libc::c_ulong, cancellable: *mut _GCancellable, error: *mut *mut _GError) -> libc::c_long;
+}
+
+
+/*
+gint nice_agent_recv_messages() [int]
+	(NiceAgent *) agent [struct _NiceAgent *]
+	(guint) stream_id [unsigned int]
+	(guint) component_id [unsigned int]
+	(NiceInputMessage *) messages [NiceInputMessage *]
+	(guint) n_messages [unsigned int]
+	(GCancellable *) cancellable [struct _GCancellable *]
+	(GError **) error [struct _GError **]
+*/
+#[link(name="nice")]
+extern "C" {
+	pub fn nice_agent_recv_messages(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint, messages: *mut NiceInputMessage, n_messages: libc::c_uint, cancellable: *mut _GCancellable, error: *mut *mut _GError) -> libc::c_int;
+}
+
+
+/*
+gssize nice_agent_recv_nonblocking() [long]
+	(NiceAgent *) agent [struct _NiceAgent *]
+	(guint) stream_id [unsigned int]
+	(guint) component_id [unsigned int]
+	(guint8 *) buf [unsigned char *]
+	(gsize) buf_len [unsigned long]
+	(GCancellable *) cancellable [struct _GCancellable *]
+	(GError **) error [struct _GError **]
+*/
+#[link(name="nice")]
+extern "C" {
+	pub fn nice_agent_recv_nonblocking(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint, buf: *mut libc::c_uchar, buf_len: libc::c_ulong, cancellable: *mut _GCancellable, error: *mut *mut _GError) -> libc::c_long;
+}
+
+
+/*
+gint nice_agent_recv_messages_nonblocking() [int]
+	(NiceAgent *) agent [struct _NiceAgent *]
+	(guint) stream_id [unsigned int]
+	(guint) component_id [unsigned int]
+	(NiceInputMessage *) messages [NiceInputMessage *]
+	(guint) n_messages [unsigned int]
+	(GCancellable *) cancellable [struct _GCancellable *]
+	(GError **) error [struct _GError **]
+*/
+#[link(name="nice")]
+extern "C" {
+	pub fn nice_agent_recv_messages_nonblocking(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint, messages: *mut NiceInputMessage, n_messages: libc::c_uint, cancellable: *mut _GCancellable, error: *mut *mut _GError) -> libc::c_int;
 }
 
 
@@ -523,6 +792,18 @@ gboolean nice_agent_get_selected_pair() [int]
 #[link(name="nice")]
 extern "C" {
 	pub fn nice_agent_get_selected_pair(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint, local: *mut *mut _NiceCandidate, remote: *mut *mut _NiceCandidate) -> libc::c_int;
+}
+
+
+/*
+GSocket * nice_agent_get_selected_socket() [struct _GSocket *]
+	(NiceAgent *) agent [struct _NiceAgent *]
+	(guint) stream_id [unsigned int]
+	(guint) component_id [unsigned int]
+*/
+#[link(name="nice")]
+extern "C" {
+	pub fn nice_agent_get_selected_socket(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint) -> *mut _GSocket;
 }
 
 
@@ -642,7 +923,7 @@ extern "C" {
 
 
 /*
-GSList * nice_agent_parse_remote_stream_sdp() [struct GSList *]
+GSList * nice_agent_parse_remote_stream_sdp() [struct _GSList *]
 	(NiceAgent *) agent [struct _NiceAgent *]
 	(guint) stream_id [unsigned int]
 	(const gchar *) sdp [const char *]
@@ -651,7 +932,7 @@ GSList * nice_agent_parse_remote_stream_sdp() [struct GSList *]
 */
 #[link(name="nice")]
 extern "C" {
-	pub fn nice_agent_parse_remote_stream_sdp(agent: *mut _NiceAgent, stream_id: libc::c_uint, sdp: *const libc::c_char, ufrag: *mut *mut libc::c_char, pwd: *mut *mut libc::c_char) -> *mut GSList;
+	pub fn nice_agent_parse_remote_stream_sdp(agent: *mut _NiceAgent, stream_id: libc::c_uint, sdp: *const libc::c_char, ufrag: *mut *mut libc::c_char, pwd: *mut *mut libc::c_char) -> *mut _GSList;
 }
 
 
@@ -664,6 +945,40 @@ NiceCandidate * nice_agent_parse_remote_candidate_sdp() [struct _NiceCandidate *
 #[link(name="nice")]
 extern "C" {
 	pub fn nice_agent_parse_remote_candidate_sdp(agent: *mut _NiceAgent, stream_id: libc::c_uint, sdp: *const libc::c_char) -> *mut _NiceCandidate;
+}
+
+
+/*
+GIOStream * nice_agent_get_io_stream() [struct _GIOStream *]
+	(NiceAgent *) agent [struct _NiceAgent *]
+	(guint) stream_id [unsigned int]
+	(guint) component_id [unsigned int]
+*/
+#[link(name="nice")]
+extern "C" {
+	pub fn nice_agent_get_io_stream(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint) -> *mut _GIOStream;
+}
+
+
+/*
+const gchar * nice_component_state_to_string() [const char *]
+	(NiceComponentState) state [NiceComponentState]
+*/
+#[link(name="nice")]
+extern "C" {
+	pub fn nice_component_state_to_string(state: libc::c_uint) -> *const libc::c_char;
+}
+
+
+/*
+gboolean nice_agent_forget_relays() [int]
+	(NiceAgent *) agent [struct _NiceAgent *]
+	(guint) stream_id [unsigned int]
+	(guint) component_id [unsigned int]
+*/
+#[link(name="nice")]
+extern "C" {
+	pub fn nice_agent_forget_relays(agent: *mut _NiceAgent, stream_id: libc::c_uint, component_id: libc::c_uint) -> libc::c_int;
 }
 
 
@@ -696,159 +1011,6 @@ extern "C" {
 }
 
 
-/*
-struct _NiceAgent
-*/
-#[repr(C)]
-pub struct _NiceAgent;
-
-/*
-struct _NiceAddress
-		(union _NiceAddress::(anonymous at /usr/include/nice/address.h:78:3)) 
-		(union (anonymous union at /usr/include/nice/address.h:78:3)) s [union _NiceAddress::(anonymous at /usr/include/nice/address.h:78:3)]
-*/
-#[repr(C)]
-pub struct _NiceAddress;/* {
-	: union _NiceAddress::(anonymous at /usr/include/nice/address.h:78:3),
-	s: union _NiceAddress::(anonymous at /usr/include/nice/address.h:78:3),
-}*/
-
-/*
-struct _NiceCandidate
-		(NiceCandidateType) type [NiceCandidateType]
-		(NiceCandidateTransport) transport [NiceCandidateTransport]
-		(NiceAddress) addr [struct _NiceAddress]
-		(NiceAddress) base_addr [struct _NiceAddress]
-		(guint32) priority [unsigned int]
-		(guint) stream_id [unsigned int]
-		(guint) component_id [unsigned int]
-		(gchar [33]) foundation [char [33]]
-		(gchar *) username [char *]
-		(gchar *) password [char *]
-		(TurnServer *) turn [struct _TurnServer *]
-		(gpointer) sockptr [void *]
-*/
-#[repr(C)]
-pub struct _NiceCandidate {
-	type_: libc::c_uint,
-	transport: libc::c_uint,
-	addr: _NiceAddress,
-	base_addr: _NiceAddress,
-	priority: libc::c_uint,
-	stream_id: libc::c_uint,
-	component_id: libc::c_uint,
-	foundation: [libc::c_char; 33],
-	username: *mut libc::c_char,
-	password: *mut libc::c_char,
-	turn: *mut _TurnServer,
-	sockptr: *mut libc::c_void,
-}
-
-/*
-struct _TurnServer
-		(NiceAddress) server [struct _NiceAddress]
-		(gchar *) username [char *]
-		(gchar *) password [char *]
-		(NiceRelayType) type [NiceRelayType]
-*/
-#[repr(C)]
-pub struct _TurnServer {
-	server: _NiceAddress,
-	username: *mut libc::c_char,
-	password: *mut libc::c_char,
-	type_: libc::c_uint,
-}
-
-/*
-struct _NiceAgentClass
-		(GObjectClass) parent_class [struct _GObjectClass]
-*/
-#[repr(C)]
-pub struct _NiceAgentClass;/* {
-	parent_class: _GObjectClass,
-}*/
-
-/*
-struct NiceAddress
-		(union _NiceAddress::(anonymous at /usr/include/nice/address.h:78:3)) 
-		(union (anonymous union at /usr/include/nice/address.h:78:3)) s [union _NiceAddress::(anonymous at /usr/include/nice/address.h:78:3)]
-*/
-#[repr(C)]
-pub struct NiceAddress;/* {
-	: union _NiceAddress::(anonymous at /usr/include/nice/address.h:78:3),
-	s: union _NiceAddress::(anonymous at /usr/include/nice/address.h:78:3),
-}*/
-
-/*
-struct sockaddr
-		(sa_family_t) sa_family [unsigned short]
-		(char [14]) sa_data
-*/
-#[repr(C)]
-pub struct sockaddr {
-	sa_family: libc::c_ushort,
-	sa_data: [libc::c_char; 14],
-}
-
-/*
-struct NiceCandidate
-		(NiceCandidateType) type [NiceCandidateType]
-		(NiceCandidateTransport) transport [NiceCandidateTransport]
-		(NiceAddress) addr [struct _NiceAddress]
-		(NiceAddress) base_addr [struct _NiceAddress]
-		(guint32) priority [unsigned int]
-		(guint) stream_id [unsigned int]
-		(guint) component_id [unsigned int]
-		(gchar [33]) foundation [char [33]]
-		(gchar *) username [char *]
-		(gchar *) password [char *]
-		(TurnServer *) turn [struct _TurnServer *]
-		(gpointer) sockptr [void *]
-*/
-#[repr(C)]
-pub struct NiceCandidate {
-	type_: libc::c_uint,
-	transport: libc::c_uint,
-	addr: _NiceAddress,
-	base_addr: _NiceAddress,
-	priority: libc::c_uint,
-	stream_id: libc::c_uint,
-	component_id: libc::c_uint,
-	foundation: [libc::c_char; 33],
-	username: *mut libc::c_char,
-	password: *mut libc::c_char,
-	turn: *mut _TurnServer,
-	sockptr: *mut libc::c_void,
-}
-
-/*
-struct GMainContext
-*/
-#[repr(C)]
-pub struct GMainContext;
-
-unsafe impl Send for GMainContext {}
-unsafe impl Sync for GMainContext {}
-
-/*
-struct NiceAgent
-*/
-#[repr(C)]
-pub struct NiceAgent;
-
-/*
-struct GSList
-		(gpointer) data [void *]
-		(GSList *) next [struct GSList *]
-*/
-#[repr(C)]
-pub struct GSList {
-	data: *mut libc::c_void,
-	next: *mut GSList,
-}
-
-#[repr(C)]
-pub struct _GList;
 
 /*
 enum  {
@@ -858,22 +1020,12 @@ enum  {
 	NICE_CANDIDATE_TYPE_RELAYED =	0x00000003 (3)
 }
 */
-#[derive(Clone, PartialEq, Debug)]
-#[repr(u32)]
-pub enum NiceCandidateType {
-	NICE_CANDIDATE_TYPE_HOST =	0 as u32,
-	NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE =	1 as u32,
-	NICE_CANDIDATE_TYPE_PEER_REFLEXIVE =	2 as u32,
-	NICE_CANDIDATE_TYPE_RELAYED =	3 as u32,
-}
-
-impl NiceCandidateType {
-	pub fn to_u32(&self) -> libc::c_uint {
-		self.clone() as libc::c_uint
-	}
-
-	pub fn from_u32(v: libc::c_uint) -> NiceCandidateType {
-		unsafe { mem::transmute(v) }
+bitflags! {
+	flags NiceCandidateType: libc::c_uint {
+		const NICE_CANDIDATE_TYPE_HOST =	0 as libc::c_uint,
+		const NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE =	1 as libc::c_uint,
+		const NICE_CANDIDATE_TYPE_PEER_REFLEXIVE =	2 as libc::c_uint,
+		const NICE_CANDIDATE_TYPE_RELAYED =	3 as libc::c_uint,
 	}
 }
 
@@ -882,20 +1034,9 @@ enum  {
 	NICE_CANDIDATE_TRANSPORT_UDP =	0x00000000 (0)
 }
 */
-#[derive(Clone, PartialEq, Debug)]
-#[repr(u32)]
-pub enum NiceCandidateTransport {
-	NICE_CANDIDATE_TRANSPORT_UDP =	0 as u32,
-	FOO = 1,
-}
-
-impl NiceCandidateTransport {
-	pub fn to_u32(&self) -> libc::c_uint {
-		self.clone() as libc::c_uint
-	}
-
-	pub fn from_u32(v: libc::c_uint) -> NiceCandidateTransport {
-		unsafe { mem::transmute(v) }
+bitflags! {
+	flags NiceCandidateTransport: libc::c_uint {
+		const NICE_CANDIDATE_TRANSPORT_UDP =	0 as libc::c_uint,
 	}
 }
 
@@ -907,21 +1048,11 @@ enum  {
 	NICE_RELAY_TYPE_TURN_TLS =	0x00000002 (2)
 }
 */
-#[derive(Clone, PartialEq, Debug)]
-#[repr(u32)]
-pub enum NiceRelayType {
-	NICE_RELAY_TYPE_TURN_UDP =	0 as u32,
-	NICE_RELAY_TYPE_TURN_TCP =	1 as u32,
-	NICE_RELAY_TYPE_TURN_TLS =	2 as u32,
-}
-
-impl NiceRelayType {
-	pub fn to_u32(&self) -> libc::c_uint {
-		self.clone() as libc::c_uint
-	}
-
-	pub fn from_u32(v: libc::c_uint) -> NiceRelayType {
-		unsafe { mem::transmute(v) }
+bitflags! {
+	flags NiceRelayType: libc::c_uint {
+		const NICE_RELAY_TYPE_TURN_UDP =	0 as libc::c_uint,
+		const NICE_RELAY_TYPE_TURN_TCP =	1 as libc::c_uint,
+		const NICE_RELAY_TYPE_TURN_TLS =	2 as libc::c_uint,
 	}
 }
 
@@ -936,27 +1067,32 @@ enum  {
 	NICE_COMPONENT_STATE_FAILED =	0x00000005 (5)
 	NICE_COMPONENT_STATE_LAST =	0x00000006 (6)
 }
+/*
 */
-#[repr(u32)]
-#[derive(Clone, PartialEq, Debug)]
+bitflags! {
+	flags NiceComponentState: libc::c_uint {
+		const NICE_COMPONENT_STATE_DISCONNECTED =	0 as libc::c_uint,
+		const NICE_COMPONENT_STATE_GATHERING =	1 as libc::c_uint,
+		const NICE_COMPONENT_STATE_CONNECTING =	2 as libc::c_uint,
+		const NICE_COMPONENT_STATE_CONNECTED =	3 as libc::c_uint,
+		const NICE_COMPONENT_STATE_READY =	4 as libc::c_uint,
+		const NICE_COMPONENT_STATE_FAILED =	5 as libc::c_uint,
+		const NICE_COMPONENT_STATE_LAST =	6 as libc::c_uint,
+	}
+}
+*/
+#[repr(C)]
+#[derive(Debug)]
 pub enum NiceComponentState {
-	NICE_COMPONENT_STATE_DISCONNECTED =	0 as u32,
-	NICE_COMPONENT_STATE_GATHERING =	1 as u32,
-	NICE_COMPONENT_STATE_CONNECTING =	2 as u32,
-	NICE_COMPONENT_STATE_CONNECTED =	3 as u32,
-	NICE_COMPONENT_STATE_READY =	4 as u32,
-	NICE_COMPONENT_STATE_FAILED =	5 as u32,
+	NICE_COMPONENT_STATE_DISCONNECTED =	0x00000000,
+	NICE_COMPONENT_STATE_GATHERING =	0x00000001,
+	NICE_COMPONENT_STATE_CONNECTING =	0x00000002,
+	NICE_COMPONENT_STATE_CONNECTED =	0x00000003,
+	NICE_COMPONENT_STATE_READY =	0x00000004,
+	NICE_COMPONENT_STATE_FAILED =	0x00000005,
+	NICE_COMPONENT_STATE_LAST =	0x00000006,
 }
 
-impl NiceComponentState {
-	pub fn to_u32(&self) -> libc::c_uint {
-		self.clone() as libc::c_uint
-	}
-
-	pub fn from_u32(v: libc::c_uint) -> NiceComponentState {
-		unsafe { mem::transmute(v) }
-	}
-}
 
 
 /*
@@ -965,23 +1101,12 @@ enum  {
 	NICE_COMPONENT_TYPE_RTCP =	0x00000002 (2)
 }
 */
-#[repr(u32)]
-#[derive(Clone, PartialEq, Debug)]
-pub enum NiceComponentType {
-	NICE_COMPONENT_TYPE_RTP =	1 as u32,
-	NICE_COMPONENT_TYPE_RTCP =	2 as u32,
-}
-
-impl NiceComponentType {
-	pub fn to_u32(&self) -> libc::c_uint {
-		self.clone() as libc::c_uint
-	}
-
-	pub fn from_u32(v: libc::c_uint) -> NiceComponentType {
-		unsafe { mem::transmute(v) }
+bitflags! {
+	flags NiceComponentType: libc::c_uint {
+		const NICE_COMPONENT_TYPE_RTP =	1 as libc::c_uint,
+		const NICE_COMPONENT_TYPE_RTCP =	2 as libc::c_uint,
 	}
 }
-
 
 /*
 enum  {
@@ -995,26 +1120,19 @@ enum  {
 	NICE_COMPATIBILITY_LAST =	0x00000005 (5)
 }
 */
-#[derive(Clone, PartialEq, Debug)]
-#[repr(u32)]
-pub enum NiceCompatibility {
-	NICE_COMPATIBILITY_RFC5245 =	0 as u32,
-	NICE_COMPATIBILITY_GOOGLE =	1 as u32,
-	NICE_COMPATIBILITY_MSN =	2 as u32,
-	NICE_COMPATIBILITY_WLM2009 =	3 as u32,
-	NICE_COMPATIBILITY_OC2007 =	4 as u32,
-	NICE_COMPATIBILITY_OC2007R2 =	5 as u32,
-}
-
-impl NiceCompatibility {
-	pub fn to_u32(&self) -> libc::c_uint {
-		self.clone() as libc::c_uint
-	}
-
-	pub fn from_u32(v: libc::c_uint) -> NiceCompatibility {
-		unsafe { mem::transmute(v) }
+bitflags! {
+	flags NiceCompatibility: libc::c_uint {
+		const NICE_COMPATIBILITY_RFC5245 =	0 as libc::c_uint,
+		const NICE_COMPATIBILITY_GOOGLE =	1 as libc::c_uint,
+		const NICE_COMPATIBILITY_MSN =	2 as libc::c_uint,
+		const NICE_COMPATIBILITY_WLM2009 =	3 as libc::c_uint,
+		const NICE_COMPATIBILITY_OC2007 =	4 as libc::c_uint,
+		const NICE_COMPATIBILITY_OC2007R2 =	5 as libc::c_uint,
+		const NICE_COMPATIBILITY_DRAFT19 =	0 as libc::c_uint,
+		const NICE_COMPATIBILITY_LAST =	5 as libc::c_uint,
 	}
 }
+
 
 /*
 enum  {
@@ -1024,21 +1142,12 @@ enum  {
 	NICE_PROXY_TYPE_LAST =	0x00000002 (2)
 }
 */
-#[derive(Clone, PartialEq, Debug)]
-#[repr(u32)]
-pub enum NiceProxyType {
-	NICE_PROXY_TYPE_NONE =	0 as u32,
-	NICE_PROXY_TYPE_SOCKS5 =	1 as u32,
-	NICE_PROXY_TYPE_HTTP =	2 as u32,
-}
-
-impl NiceProxyType {
-	pub fn to_u32(&self) -> libc::c_uint {
-		self.clone() as libc::c_uint
-	}
-
-	pub fn from_u32(v: libc::c_uint) -> NiceProxyType {
-		unsafe { mem::transmute(v) }
+bitflags! {
+	flags NiceProxyType: libc::c_uint {
+		const NICE_PROXY_TYPE_NONE =	0 as libc::c_uint,
+		const NICE_PROXY_TYPE_SOCKS5 =	1 as libc::c_uint,
+		const NICE_PROXY_TYPE_HTTP =	2 as libc::c_uint,
+		const NICE_PROXY_TYPE_LAST =	2 as libc::c_uint,
 	}
 }
 
@@ -1057,6 +1166,22 @@ impl NiceProxyType {
  * It is the agent that will take care of everything relating to ICE.
  * It will take care of discovering your local candidates and do
  *  connectivity checks to create a stream of data between you and your peer.
+ *
+ * Streams and their components are referenced by integer IDs (with respect to a
+ * given #NiceAgent). These IDs are guaranteed to be positive (i.e. non-zero)
+ * for valid streams/components.
+ *
+ * Each stream can receive data in one of two ways: using
+ * nice_agent_attach_recv() or nice_agent_recv_messages() (and the derived
+ * #NiceInputStream and #NiceIOStream classes accessible using
+ * nice_agent_get_io_stream()). nice_agent_attach_recv() is non-blocking: it
+ * takes a user-provided callback function and attaches the stream’s socket to
+ * the provided #GMainContext, invoking the callback in that context for every
+ * packet received. nice_agent_recv_messages() instead blocks on receiving a
+ * packet, and writes it directly into a user-provided buffer. This reduces the
+ * number of callback invokations and (potentially) buffer copies required to
+ * receive packets. nice_agent_recv_messages() (or #NiceInputStream) is designed
+ * to be used in a blocking loop in a separate thread.
  *
  <example>
    <title>Simple example on how to use libnice</title>

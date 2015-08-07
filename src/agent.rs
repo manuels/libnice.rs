@@ -134,7 +134,7 @@ impl Agent {
 	fn set_controlling_mode(&self, mode: ControllingMode) {
 		//let lock = self.agent.lock().unwrap();
 		//lock.set_property("controlling-mode", mode.to_bool() as *mut c_void);
-		let mode = mode.to_bool() as *mut c_void;
+		let mode = mode.to_bool() as usize as *mut c_void;
 		GObjectTrait::set_property(self, "controlling-mode", mode);
 	}
 

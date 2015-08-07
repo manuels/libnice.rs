@@ -1,6 +1,6 @@
 [package]
 name = "nice"
-version = "0.0.22"
+version = "0.1.0"
 description = "Bindings for libnice >= v0.1.4"
 homepage = "https://github.com/manuels/libnice.rs"
 license = " GPL-2.0"
@@ -11,3 +11,4 @@ log = "*"
 libc = "*"
 bitflags = "*"
 env_logger = "*"
+condition_variable = "*"

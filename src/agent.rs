@@ -1,6 +1,6 @@
 use std::thread;
 use std::any::Any;
-use std::sync::{Arc, Mutex, Barrier, MutexGuard, LockResult, Condvar};
+use std::sync::{Arc, Mutex, Barrier, MutexGuard, LockResult};
 
 use libc::{c_int, c_uint, c_void};
 
@@ -8,6 +8,8 @@ use libc::{c_int, c_uint, c_void};
 use env_logger;
 #[cfg(test)]
 use std::sync::mpsc::channel;
+
+use condition_variable::{ConditionVariable, Notify};
 
 use bindings_agent as ffi;
 use api_agent as api;
@@ -106,12 +108,12 @@ impl Agent {
 	}
 
 	pub fn watch_state<'a>(&'a self, stream_id: c_uint, component_id: c_uint)
-		-> (Arc<(Mutex<NiceComponentState>,Condvar)>,
+		-> (Arc<ConditionVariable<NiceComponentState>>,
 			GCallbackHandle<'a, api::Agent, Agent>)
 	{
 		let init_state = NiceComponentState::NICE_COMPONENT_STATE_DISCONNECTED;
-		let state = Arc::new((Mutex::new(init_state), Condvar::new()));
-		
+		let state = Arc::new(ConditionVariable::new(init_state));
+
 		let state1 = state.clone();
 		let state_cb = move |s, c, new_state| {
 			if stream_id != s || component_id != c {
@@ -119,12 +121,7 @@ impl Agent {
 			}
 
 			debug!("new state: {:?}", new_state);
-
-			let &(ref lock, ref cvar) = &*state1;
-			let mut state_var = lock.lock().unwrap();
-
-			*state_var = new_state;
-			cvar.notify_all();
+			state1.set(new_state, Notify::All);
 
 			false // TODO: correct?
 		};
@@ -224,7 +221,7 @@ impl GObjectTrait<api::Agent> for Agent {
 pub struct Stream<'a,F:Fn(&[u8])> {
 	agent:          &'a Agent,
 	stream_id:      c_uint,
-	state:          Arc<(Mutex<NiceComponentState>, Condvar)>,
+	state:          Arc<ConditionVariable<NiceComponentState>>,
 	rx_callback:    Box<F>,
 	state_callback: GCallbackHandle<'a, api::Agent, Agent>
 }
@@ -320,6 +317,10 @@ impl<'a,F:Fn(&[u8])> Stream<'a,F> {
 			Ok(())
 		}
 	}
+
+	pub fn get_state(&self) -> Arc<ConditionVariable<NiceComponentState>> {
+		self.state.clone()
+	}
 }
 
 impl<'a,F:Fn(&[u8])> Drop for Stream<'a,F> {
@@ -351,12 +352,16 @@ fn test() {
 	let cred_alice = alice.generate_local_sdp().unwrap();
 	let cred_bob   = bob.generate_local_sdp().unwrap();
 
-	let count = alice.parse_remote_sdp(&cred_bob[..]);
-	assert!(count.unwrap() > 0);
-	let count = bob.parse_remote_sdp(&cred_alice[..]);
-	assert!(count.unwrap() > 0);
+	let count_a = alice.parse_remote_sdp(&cred_bob[..]);
+	let count_b = bob.parse_remote_sdp(&cred_alice[..]);
+	assert!(count_a.unwrap() > 0);
+	assert!(count_b.unwrap() > 0);
 
-	::std::thread::sleep_ms(1000);
+	let state_a = a.get_state();
+	let state_b = b.get_state();
+
+	state_a.wait_for(NiceComponentState::NICE_COMPONENT_STATE_READY).unwrap();
+	state_b.wait_for(NiceComponentState::NICE_COMPONENT_STATE_READY).unwrap();
 
 	assert_eq!(a.send(1, &[1,2,3]), Some(3));
 	assert_eq!(b.send(1, &[6,7,8,9]), Some(4));

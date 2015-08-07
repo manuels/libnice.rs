@@ -57,9 +57,9 @@ pub trait GObjectTrait<R: api::GObjectTrait>: Sized {
 	/// as it drops out of scope.
 	#[must_use]
 	fn on_signal<'a, F: Any>(&'a self,
-	                        signal:    &str,
-	                        cb:        F,
-	                        wrapper:   extern fn())
+	                         signal:    &str,
+	                         cb:        F,
+	                         wrapper:   extern fn())
 		-> GCallbackHandle<'a, R, Self>
 	{
 		let cb = Box::new(cb);

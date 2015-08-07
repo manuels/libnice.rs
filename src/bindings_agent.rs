@@ -1082,7 +1082,7 @@ bitflags! {
 }
 */
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Clone,PartialEq,Debug)]
 pub enum NiceComponentState {
 	NICE_COMPONENT_STATE_DISCONNECTED =	0x00000000,
 	NICE_COMPONENT_STATE_GATHERING =	0x00000001,

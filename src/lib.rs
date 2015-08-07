@@ -8,6 +8,8 @@ extern crate libc;
 extern crate bitflags;
 extern crate env_logger;
 
+extern crate condition_variable;
+
 use std::ops::Deref;
 
 pub struct Boxing<T: Sized> {

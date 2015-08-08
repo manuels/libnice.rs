@@ -39,3 +39,7 @@ pub mod api_agent;
 
 pub mod gobject;
 pub mod agent;
+pub mod stream;
+
+pub use agent::Agent;
+pub use stream::Stream;

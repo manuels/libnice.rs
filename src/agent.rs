@@ -1,6 +1,6 @@
 use std::thread;
 use std::any::Any;
-use std::sync::{Arc, Mutex, Barrier, MutexGuard, LockResult};
+use std::sync::{Arc, Mutex, MutexGuard, LockResult};
 
 use libc::{c_int, c_uint, c_void};
 
@@ -94,17 +94,7 @@ impl Agent {
 			}
 		};
 
-		let stream = Stream::new(&self, stream_id, callback);
-
-		if let Some(s) = stream {
-			s.set_name(name);
-
-			if s.gather_candidates() {
-				return Some(s);
-			}
-		}
-
-		None
+		Stream::new(&self, stream_id, name, callback)
 	}
 
 	pub fn watch_state<'a>(&'a self, stream_id: c_uint, component_id: c_uint)
@@ -219,73 +209,75 @@ impl GObjectTrait<api::Agent> for Agent {
 
 // TODO: remove lifetime
 pub struct Stream<'a,F:Fn(&[u8])> {
-	agent:          &'a Agent,
-	stream_id:      c_uint,
-	state:          Arc<ConditionVariable<NiceComponentState>>,
-	rx_callback:    Box<F>,
-	state_callback: GCallbackHandle<'a, api::Agent, Agent>
+	agent:             &'a Agent,
+	stream_id:         c_uint,
+	state:             Arc<ConditionVariable<NiceComponentState>>,
+	gathered:          Arc<ConditionVariable<bool>>,
+	rx_callback:       Box<F>,
+	state_callback:    GCallbackHandle<'a, api::Agent, Agent>,
+	gathered_callback: GCallbackHandle<'a, api::Agent, Agent>,
 }
 
 impl<'a,F:Fn(&[u8])> Stream<'a,F> {
-	fn new(agent: &'a Agent, stream_id: c_uint, rx_callback: F)
+	fn new(agent: &'a Agent, stream_id: c_uint, name: &str, rx_callback: F)
 		-> Option<Stream<'a, F>>
 	{
 		let component_id = 1;
 
 		let (state, state_cb) = agent.watch_state(stream_id, component_id);
 
+		let gathered = Arc::new(ConditionVariable::new(false));
+		let gathered1 = gathered.clone();
+		let gathered_cb = agent.on_candidate_gathering_done(move |s| {
+			if s == stream_id {
+				gathered1.set(true, Notify::All);
+				true // TODO: correct?
+			} else {
+				false // TODO: correct?
+			}
+		});
+
 		let mut s = Stream {
-			agent:          agent,
-			stream_id:      stream_id,
-			state:          state,
-			rx_callback:    Box::new(rx_callback),
-			state_callback: state_cb,
+			agent:             agent,
+			stream_id:         stream_id,
+			state:             state,
+			gathered:          gathered,
+			rx_callback:       Box::new(rx_callback),
+			state_callback:    state_cb,
+			gathered_callback: gathered_cb,
 		};
 
-		if s.attach_recv(component_id).is_ok() {
-			Some(s)
-		} else {
+		s.attach_recv(component_id)
+			.and_then(|_| s.set_name(name))
+			.and_then(|_| s.gather_candidates())
+			.map(|_| s)
+	}
+
+	fn gather_candidates(&self) -> Option<()> {
+		if !self.agent.gather_candidates(self.stream_id) {
 			None
+		} else {
+			Some(())
 		}
 	}
 
-	// TODO use return value
-	fn gather_candidates(&self) -> bool {
-		let barrier1 = Arc::new(Barrier::new(2));
-		let barrier2 = barrier1.clone();
-
-		let expected_stream_id = self.stream_id;
-
-		let on_done_cb = move |actual_stream_id:c_uint| {
-			assert_eq!(actual_stream_id, expected_stream_id);
-			barrier1.wait();
-
-			true // TODO: is this correct, or is it 'false/true'?
-		};
-
-		let cb  = self.agent.on_candidate_gathering_done(on_done_cb);
-		let res = self.agent.gather_candidates(self.stream_id);
-
-		/*
-		 * Attention: We must wait for the callback to be called, then we can
-		 * drop the callback (and thus its move'd variables).
-		 */
-		barrier2.wait();
-		drop(cb);
-
-		res
-	}
-
-	pub fn get_local_credentials(&self)
-		-> Option<(String, String)>
+	pub fn get_local_credentials(&self) -> Option<(String, String)>
 	{
+		if self.gathered.wait_for(true).is_err() {
+			return None;
+		}
+
 		let lock = self.agent.as_raw().unwrap();
 		lock.get_local_credentials(self.stream_id)
 	}
 
-	pub fn set_remote_credentials(&self, ufrag: &str, pwd: &str) -> bool {
+	pub fn set_remote_credentials(&self, ufrag: &str, pwd: &str) -> Option<()> {
 		let lock = self.agent.as_raw().unwrap();
-		lock.set_remote_credentials(self.stream_id, ufrag, pwd)
+		if !lock.set_remote_credentials(self.stream_id, ufrag, pwd) {
+			None
+		} else {
+			Some(())
+		}
 	}
 
 	pub fn send(&self, component_id: c_uint, buf: &[u8]) -> Option<usize> {
@@ -293,9 +285,13 @@ impl<'a,F:Fn(&[u8])> Stream<'a,F> {
 		lock.send(self.stream_id, component_id, buf)
 	}
 
-	fn set_name(&self, name: &str) -> bool {
+	fn set_name(&self, name: &str) -> Option<()> {
 		let lock = self.agent.as_raw().unwrap();
-		lock.set_stream_name(self.stream_id, name)
+		if lock.set_stream_name(self.stream_id, name) {
+			Some(())
+		} else {
+			None
+		}
 	}
 
 	pub fn get_name(&self) -> Option<String> {
@@ -305,21 +301,25 @@ impl<'a,F:Fn(&[u8])> Stream<'a,F> {
 
 	pub fn attach_recv(&mut self,
 	                   component_id: c_uint)
-		-> Result<(), ()>
+		-> Option<()>
 	{
 		let cb   = &mut self.rx_callback;
 		let ctx  = self.agent.get_context();
 		let lock = self.agent.as_raw().unwrap();
 
 		if !lock.attach_recv(self.stream_id, component_id, ctx, cb) {
-			Err(())
+			None
 		} else {
-			Ok(())
+			Some(())
 		}
 	}
 
 	pub fn get_state(&self) -> Arc<ConditionVariable<NiceComponentState>> {
 		self.state.clone()
+	}
+
+	pub fn get_candiates_gathered(&self) -> Arc<ConditionVariable<bool>> {
+		self.gathered.clone()
 	}
 }
 

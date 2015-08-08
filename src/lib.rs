@@ -41,5 +41,5 @@ pub mod gobject;
 pub mod agent;
 pub mod stream;
 
-pub use agent::Agent;
+pub use agent::{Agent, ControllingMode};
 pub use stream::Stream;

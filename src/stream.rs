@@ -10,7 +10,6 @@ use api_agent as api;
 use api_agent::NiceComponentState;
 
 
-// TODO: remove lifetime
 pub struct Stream<'a,F:Fn(&[u8])> {
 	agent:             &'a Agent,
 	stream_id:         c_uint,

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::any::Any;
 
 use libc::c_uint;
 use condition_variable::{ConditionVariable, Notify};
@@ -10,19 +11,19 @@ use api_agent as api;
 use api_agent::NiceComponentState;
 
 
-pub struct Stream<'a,F:Fn(&[u8])> {
+pub struct Stream<'a> {
 	agent:             &'a Agent,
 	stream_id:         c_uint,
 	state:             Arc<ConditionVariable<NiceComponentState>>,
 	gathered:          Arc<ConditionVariable<bool>>,
-	rx_callback:       Box<F>,
+	rx_callback:       Box<Any>,
 	state_callback:    GCallbackHandle<'a, api::Agent, Agent>,
 	gathered_callback: GCallbackHandle<'a, api::Agent, Agent>,
 }
 
-impl<'a,F:Fn(&[u8])> Stream<'a,F> {
-	pub fn new(agent: &'a Agent, stream_id: c_uint, name: &str, rx_callback: F)
-		-> Option<Stream<'a, F>>
+impl<'a> Stream<'a> {
+	pub fn new<F:Any + Fn(&[u8])>(agent: &'a Agent, stream_id: c_uint, name: &str, rx_callback: F)
+		-> Option<Stream<'a>>
 	{
 		let component_id = 1;
 
@@ -49,7 +50,7 @@ impl<'a,F:Fn(&[u8])> Stream<'a,F> {
 			gathered_callback: gathered_cb,
 		};
 
-		s.attach_recv(component_id)
+		s.attach_recv::<F>(component_id)
 			.and_then(|_| s.set_name(name))
 			.and_then(|_| s.gather_candidates())
 			.map(|_| s)
@@ -101,11 +102,11 @@ impl<'a,F:Fn(&[u8])> Stream<'a,F> {
 		lock.get_stream_name(self.stream_id)
 	}
 
-	pub fn attach_recv(&mut self,
+	pub fn attach_recv<F:Any+Fn(&[u8])>(&mut self,
 	                   component_id: c_uint)
 		-> Option<()>
 	{
-		let cb   = &mut self.rx_callback;
+		let cb: &mut Box<F> = unsafe { ::std::mem::transmute(&mut self.rx_callback) };
 		let ctx  = self.agent.get_context();
 		let lock = self.agent.as_raw().unwrap();
 
@@ -125,7 +126,7 @@ impl<'a,F:Fn(&[u8])> Stream<'a,F> {
 	}
 }
 
-impl<'a,F:Fn(&[u8])> Drop for Stream<'a,F> {
+impl<'a> Drop for Stream<'a> {
 	fn drop(&mut self) {
 		let ctx  = self.agent.get_context();
 		let lock = self.agent.as_raw().unwrap();

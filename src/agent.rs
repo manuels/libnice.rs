@@ -72,11 +72,11 @@ impl Agent {
 		&self.main_ctx
 	}
 
-	pub fn add_stream<'a, F:Fn(&[u8])>(
+	pub fn add_stream<'a, F:Any+Fn(&[u8])>(
 				&'a self, name: &str,
 				n_components:   usize,
 				callback:       F)
-		-> Option<Stream<'a,F>>
+		-> Option<Stream<'a>>
 	{
 		let stream_id = {
 			let lock = self.agent.lock().unwrap();
@@ -105,7 +105,11 @@ impl Agent {
 			}
 
 			debug!("new state: {:?}", new_state);
-			state1.set(new_state, Notify::All);
+			// We can run into a race condition (why?), so let's check
+			// if the stream is already set to READY
+			if state1.get().unwrap() != NiceComponentState::NICE_COMPONENT_STATE_READY {
+				state1.set(new_state, Notify::All);
+			}
 
 			false // TODO: correct?
 		};

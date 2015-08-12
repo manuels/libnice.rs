@@ -8,7 +8,7 @@ use agent::Agent;
 use gobject::{GObjectTrait, GCallbackHandle};
 
 use api_agent as api;
-use api_agent::NiceComponentState;
+pub use api_agent::NiceComponentState;
 
 
 pub struct Stream<'a> {

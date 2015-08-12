@@ -41,5 +41,6 @@ pub mod gobject;
 pub mod agent;
 pub mod stream;
 
+pub use api_agent::NiceComponentState;
 pub use agent::{Agent, ControllingMode};
 pub use stream::Stream;

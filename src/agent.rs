@@ -15,7 +15,7 @@ use api_agent::NiceComponentState;
 use gobject::{GObjectTrait, GCallbackHandle};
 use stream::Stream;
 
-#[derive(Debug,PartialEq,Clone)]
+#[derive(Debug,PartialEq,Clone,Copy)]
 pub enum ControllingMode {
 	Server,
 	Client,

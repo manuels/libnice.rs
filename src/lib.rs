@@ -42,5 +42,5 @@ pub mod agent;
 pub mod stream;
 
 pub use api_agent::NiceComponentState;
-pub use agent::{Agent, ControllingMode};
+pub use agent::{Agent, ControllingMode, TransferMode};
 pub use stream::Stream;

@@ -21,6 +21,12 @@ pub enum ControllingMode {
 	Client,
 }
 
+#[derive(Debug,PartialEq,Clone,Copy)]
+pub enum TransferMode {
+	Reliable,
+	NonReliable,
+}
+
 impl ControllingMode {
 	pub fn to_bool(&self) -> bool {
 		match *self {
@@ -34,6 +40,7 @@ pub struct Agent {
 	agent:     Arc<Mutex<api::Agent>>,
 	main_loop: GMainLoop,
 	main_ctx:  GMainContext,
+	transfer:  TransferMode,
 }
 
 impl Drop for Agent {
@@ -43,18 +50,25 @@ impl Drop for Agent {
 }
 
 impl Agent {
-	pub fn new(mode: ControllingMode) -> Agent {
+	pub fn new(transfer: TransferMode, control: ControllingMode) -> Agent {
 		let main_loop = GMainLoop::new();
 		
 		let ctx = main_loop.get_context();
 		let compat = ffi::NICE_COMPATIBILITY_RFC5245;
 
+		let ptr = if transfer == TransferMode::Reliable {
+			api::Agent::new_reliable(&ctx, compat)
+		} else {
+			api::Agent::new(&ctx, compat)
+		};
+
 		let agent = Agent {
-			agent:     Arc::new(Mutex::new(api::Agent::new(&ctx, compat))),
+			agent:     Arc::new(Mutex::new(ptr)),
 			main_loop: main_loop.clone(),
 			main_ctx:  ctx,
+			transfer:  transfer,
 		};
-		agent.set_controlling_mode(mode);
+		agent.set_controlling_mode(control);
 
 		thread::spawn(move || {
 			main_loop.run();
@@ -68,8 +82,22 @@ impl Agent {
 		lock.set_software(name);
 	}
 
+	pub fn restart(&self) {
+		let lock = self.agent.lock().unwrap();
+		lock.restart();
+	}
+
+	pub fn restart_stream(&self, stream_id: c_uint) -> bool {
+		let lock = self.agent.lock().unwrap();
+		lock.restart_stream(stream_id)
+	}
+
 	pub fn get_context(&self) -> &GMainContext {
 		&self.main_ctx
+	}
+
+	pub fn get_transfer(&self) -> TransferMode {
+		self.transfer
 	}
 
 	pub fn add_stream<'a, F:Any+Fn(&[u8])>(
@@ -101,7 +129,7 @@ impl Agent {
 		let state1 = state.clone();
 		let state_cb = move |s, c, new_state| {
 			if stream_id != s || component_id != c {
-				return false; // TODO ???
+				return true; // TODO ???
 			}
 
 			debug!("new state: {:?}", new_state);
@@ -111,7 +139,7 @@ impl Agent {
 				state1.set(new_state, Notify::All);
 			}
 
-			false // TODO: correct?
+			true // TODO: correct?
 		};
 
 		let cb_handle = self.on_component_state_changed(state_cb);
@@ -161,6 +189,31 @@ impl Agent {
 		};
 
 		GObjectTrait::on_signal(self, "candidate-gathering-done", cb, func_ptr)
+	}
+
+	#[must_use]
+	pub fn on_reliable_transport_writable<'a,'b, F:Any>(&'a self, cb: F)
+		-> GCallbackHandle<'a,api::Agent, Self>
+		where F: Any + Fn(c_uint, c_uint)
+	{
+		#[allow(unused_variables)]
+		extern fn wrapper<G>(_agent:       *mut ffi::_NiceAgent,
+		                     stream_id:    c_uint,
+		                     component_id: c_uint,
+		                     user_data:    *mut c_void)
+				where G: Fn(c_uint, c_uint)
+		{
+			let closure = user_data as *mut G;
+			unsafe {
+				(*closure)(stream_id, component_id)
+			};
+		}
+
+		let func_ptr: extern fn() = unsafe {
+			::std::mem::transmute(wrapper::<F>)
+		};
+
+		GObjectTrait::on_signal(self, "reliable-transport-writable", cb, func_ptr)
 	}
 
 	#[must_use]

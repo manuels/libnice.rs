@@ -481,6 +481,14 @@ impl Agent {
 		res != ffi::FALSE
 	}
 
+	pub fn restart_stream(&self, stream_id: c_uint) -> bool {
+		let res = unsafe {
+			ffi::nice_agent_restart_stream(self.ptr, stream_id)
+		};
+
+		res != ffi::FALSE
+	}
+
 	/*
 	pub fn restart_stream(&self, stream_id: c_uint) -> bool {
 		let res = unsafe {

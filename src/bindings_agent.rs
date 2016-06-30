@@ -1021,7 +1021,7 @@ enum  {
 }
 */
 bitflags! {
-	flags NiceCandidateType: libc::c_uint {
+	pub flags NiceCandidateType: libc::c_uint {
 		const NICE_CANDIDATE_TYPE_HOST =	0 as libc::c_uint,
 		const NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE =	1 as libc::c_uint,
 		const NICE_CANDIDATE_TYPE_PEER_REFLEXIVE =	2 as libc::c_uint,
@@ -1035,7 +1035,7 @@ enum  {
 }
 */
 bitflags! {
-	flags NiceCandidateTransport: libc::c_uint {
+	pub flags NiceCandidateTransport: libc::c_uint {
 		const NICE_CANDIDATE_TRANSPORT_UDP =	0 as libc::c_uint,
 	}
 }
@@ -1049,7 +1049,7 @@ enum  {
 }
 */
 bitflags! {
-	flags NiceRelayType: libc::c_uint {
+	pub flags NiceRelayType: libc::c_uint {
 		const NICE_RELAY_TYPE_TURN_UDP =	0 as libc::c_uint,
 		const NICE_RELAY_TYPE_TURN_TCP =	1 as libc::c_uint,
 		const NICE_RELAY_TYPE_TURN_TLS =	2 as libc::c_uint,
@@ -1070,7 +1070,7 @@ enum  {
 /*
 */
 bitflags! {
-	flags NiceComponentState: libc::c_uint {
+	pub flags NiceComponentState: libc::c_uint {
 		const NICE_COMPONENT_STATE_DISCONNECTED =	0 as libc::c_uint,
 		const NICE_COMPONENT_STATE_GATHERING =	1 as libc::c_uint,
 		const NICE_COMPONENT_STATE_CONNECTING =	2 as libc::c_uint,
@@ -1102,7 +1102,7 @@ enum  {
 }
 */
 bitflags! {
-	flags NiceComponentType: libc::c_uint {
+	pub flags NiceComponentType: libc::c_uint {
 		const NICE_COMPONENT_TYPE_RTP =	1 as libc::c_uint,
 		const NICE_COMPONENT_TYPE_RTCP =	2 as libc::c_uint,
 	}
@@ -1121,7 +1121,7 @@ enum  {
 }
 */
 bitflags! {
-	flags NiceCompatibility: libc::c_uint {
+	pub flags NiceCompatibility: libc::c_uint {
 		const NICE_COMPATIBILITY_RFC5245 =	0 as libc::c_uint,
 		const NICE_COMPATIBILITY_GOOGLE =	1 as libc::c_uint,
 		const NICE_COMPATIBILITY_MSN =	2 as libc::c_uint,
@@ -1143,7 +1143,7 @@ enum  {
 }
 */
 bitflags! {
-	flags NiceProxyType: libc::c_uint {
+	pub flags NiceProxyType: libc::c_uint {
 		const NICE_PROXY_TYPE_NONE =	0 as libc::c_uint,
 		const NICE_PROXY_TYPE_SOCKS5 =	1 as libc::c_uint,
 		const NICE_PROXY_TYPE_HTTP =	2 as libc::c_uint,

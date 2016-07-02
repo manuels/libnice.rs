@@ -7,8 +7,8 @@ license = " GPL-2.0"
 authors = ["Manuel Schölling <manuel.schoelling@gmx.de>"]
 
 [dependencies]
-log = "*"
-libc = "*"
-bitflags = "*"
-env_logger = "*"
-condition_variable = "*"
+log = "^0.3.6"
+libc = "^0.2"
+bitflags = "^0.7"
+env_logger = "^0.3.3"
+condition_variable = "^0.1"
